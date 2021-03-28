@@ -1,1 +1,9 @@
-/.DS_Store
+.DS_Store
+.vscode/
+note/
+__pycache__
+results/
+use_results/
+old/
+*.pyc
+runs/

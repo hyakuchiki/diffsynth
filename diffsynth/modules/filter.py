@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from diffsynth.modules.synth import Processor
+from diffsynth.processor import Processor
 import diffsynth.util as util
 import numpy as np
 import math

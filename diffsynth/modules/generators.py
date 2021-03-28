@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from diffsynth.modules.synth import Gen
+from diffsynth.processor import Gen
 import diffsynth.util as util
 import numpy as np
 from diffsynth.util import midi_to_hz
@@ -284,7 +284,7 @@ class SineOscillator(Gen):
             param_range['amplitudes'] = (-np.inf, np.inf)
         return param_range
 
-class SimpleFMSynth(Gen):
+class SimpleFMOsc(Gen):
     """FM Synth with one carrier and one modulator both sine waves
 
     """

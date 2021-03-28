@@ -30,7 +30,7 @@ def wavetable_synthesis(frequencies, amplitudes, wavetable, n_samples = 64000, s
 
     Args:
         frequencies (torch.Tensor): Frame-wise frequency in Hz [batch_size, n_frames, 1]
-        amplitudes ([type]): Frame-wise amplitude envelope [batch_size, n_frames, 1]
+        amplitudes (torch.Tensor): Frame-wise amplitude envelope [batch_size, n_frames, 1]
         wavetable: oscillator waveform can change each frame ([batch_size, n_frames, len_waveform]) or be constant ([wavetable, len_waveform])
         fm_signal: audio rate signal for FM (phase modulation)
     Returns:
@@ -567,7 +567,7 @@ def unit_to_hz(unit, hz_min, hz_max, clip = False):
     midi = unit_to_midi(unit, midi_min=hz_to_midi(hz_min), midi_max=hz_to_midi(hz_max), clip=clip)
     return midi_to_hz(midi)
 
-def frequencies_sigmoid(freqs, hz_min=0.0, hz_max=8000.0):
+def frequencies_sigmoid(freqs, hz_min=8.2, hz_max=8000.0):
     """Sum of sigmoids to logarithmically scale network outputs to frequencies.
     without depth
 

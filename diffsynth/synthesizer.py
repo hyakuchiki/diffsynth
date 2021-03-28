@@ -1,21 +1,7 @@
 import torch
 import torch.nn as nn
+from diffsynth.processor import Gen
 
-class Processor(nn.Module):
-    def __init__(self, name):
-        """ Initialize as module """
-        super().__init__()
-        self.name = name
-    def get_param_sizes(self):
-        raise NotImplementedError
-    def get_param_range(self):
-        raise NotImplementedError    
-    def forward(self):
-        raise NotImplementedError
-
-class Gen(Processor):
-    def __init__(self, name):
-        super().__init__(name)
 
 class Synthesizer(nn.Module):
     """
@@ -55,12 +41,13 @@ class Synthesizer(nn.Module):
         self.ext_param_size = sum(self.ext_param_sizes.values())
 
     def fill_params(self, input_tensor, conditioning=None):
-        """using network output to fill synth parameter dict
+        """using network output tensor to fill synth parameter dict
         doesn't take into account parameter range
 
         Args:
             input_tensor (torch.Tensor): Shape [batch, n_frames, input_size]
-            conditioning: dict of conditions ex.) {'f0_hz': torch.Tensor [batch, n_frames, 1]}
+                if parameters are stationary like a preset, n_frames should be 1
+            conditioning: dict of conditions ex.) {'f0_hz': torch.Tensor [batch, n_frames_cond, 1]}
         Returns:
             dag_input: {'amp': torch.Tensor [batch, n_frames, 1], }
         """
@@ -109,33 +96,3 @@ class Synthesizer(nn.Module):
         outputs[self.name] = outputs[output_name]
         
         return outputs[self.name], outputs
-
-class Add(Processor):
-    
-    def __init__(self, name='add', n_samples=64000):
-        super().__init__(name=name)
-    
-    def forward(self, signal_a, signal_b):
-        # kinda sucks can only add two
-        return signal_a+signal_b
-
-    def get_param_sizes(self):
-        return {'signal_a': 1, 'signal_b': 1}
-
-    def get_param_range(self):
-        return {'signal_a': (-1, 1), 'signal_b': (-1, 1)}
-
-class Mix(Processor):
-    
-    def __init__(self, name='add'):
-        super().__init__(name=name)
-    
-    def forward(self, signal_a, signal_b, mix_a, mix_b):
-        # kinda sucks can only add two
-        return mix_a*signal_a+mix_b*signal_b
-
-    def get_param_sizes(self):
-        return {'signal_a': 1, 'signal_b': 1, 'mix_a': 1, 'mix_b': 1}
-
-    def get_param_range(self):
-        return {'signal_a': (-1, 1), 'signal_b': (-1, 1), 'mix_a': (0, 1), 'mix_b': (0, 1)}

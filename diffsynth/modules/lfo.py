@@ -1,5 +1,5 @@
 import torch
-from diffsynth.modules.synth import Processor
+from diffsynth.processor import Processor
 
 def soft_clamp_min(x, min_v, T=100):
     x = torch.sigmoid((min_v-x)*T)*(min_v-x)+x
@@ -21,7 +21,7 @@ class LFO(Processor):
             n_samples (int, optional): number of samples to generate. Defaults to None.
 
         Returns:
-            torch.Tensor: lfo signal (batch_size, n_samples)
+            torch.Tensor: lfo signal (batch_size, n_samples, 1)
         """
         if n_samples is None:
             n_samples = self.n_samples
@@ -32,7 +32,7 @@ class LFO(Processor):
         x = torch.linspace(0, 1, n_samples).repeat(batch_size, 1)
         phase = x * final_phase
         wave = level * torch.sin(phase)
-        return wave
+        return wave.unsqueeze(-1)
 
     def get_param_sizes(self):
         return {'rate': 1, 'level': 1}
