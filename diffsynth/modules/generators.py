@@ -294,8 +294,8 @@ class SimpleFMOsc(Gen):
         self.sample_rate = sample_rate
         self.amp_scale_fn = amp_scale_fn
         self.freq_scale_fn = freq_scale_fn
-        self.waveform = torch.sin(torch.linspace(-np.pi, np.pi, 2048))
-        self.mod = []
+        # 1, len_wavetable=2048
+        self.register_buffer('waveform', torch.sin(torch.linspace(-np.pi, np.pi, 64).unsqueeze(0)))
 
     def forward(self, mod_amp, mod_freq, car_amp, car_freq, n_samples=None):
         if self.amp_scale_fn is not None:
@@ -307,8 +307,9 @@ class SimpleFMOsc(Gen):
         if n_samples is None:   
             n_samples = self.n_samples
         
-        mod_signal = util.wavetable_synthesis(mod_freq, mod_amp, self.waveform, n_samples, self.sample_rate)
-        car_signal = util.wavetable_synthesis(car_freq, car_amp, self.waveform, n_samples, self.sample_rate, mod_signal)
+        waveform = self.waveform.expand(mod_amp.shape[0], -1)
+        mod_signal = util.wavetable_synthesis(mod_freq, mod_amp, waveform, n_samples, self.sample_rate)
+        car_signal = util.wavetable_synthesis(car_freq, car_amp, waveform, n_samples, self.sample_rate, mod_signal)
         return car_signal
 
     def get_param_sizes(self):

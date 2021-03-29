@@ -31,7 +31,7 @@ def wavetable_synthesis(frequencies, amplitudes, wavetable, n_samples = 64000, s
     Args:
         frequencies (torch.Tensor): Frame-wise frequency in Hz [batch_size, n_frames, 1]
         amplitudes (torch.Tensor): Frame-wise amplitude envelope [batch_size, n_frames, 1]
-        wavetable: oscillator waveform can change each frame ([batch_size, n_frames, len_waveform]) or be constant ([wavetable, len_waveform])
+        wavetable: oscillator waveform can change each frame ([batch_size, n_frames, len_waveform]) or be constant ([batch_size, len_waveform])
         fm_signal: audio rate signal for FM (phase modulation)
     Returns:
         audio: Audio at the frequency and amplitude of the inputs, with harmonics given by the wavetable. Shape[batch_size, n_samples]
@@ -53,15 +53,14 @@ def wavetable_synthesis(frequencies, amplitudes, wavetable, n_samples = 64000, s
         wavetable = resample_frames(wavetable, n_samples)
     
     phase_velocity = frq_env / float(sample_rate)
-    phase = torch.cumsum(phase_velocity, 1)[:, :-1] % 1.0
-    phase = torch.cat([torch.zeros(batch_size, 1), phase], dim=1) # exclusive cumsum starting at 0
+    phase = torch.cumsum(phase_velocity, 1)[:, :-1] % 1.0 # [batch_size, n_samples]
+    phase = torch.cat([torch.zeros(batch_size, 1).to(phase.device), phase], dim=1) # exclusive cumsum starting at 0
     if fm_signal is not None:
         audio = linear_lookup(phase+fm_signal, wavetable)
     else:
         audio = linear_lookup(phase, wavetable)
     audio *= amp_env
     return audio
-
 
 def linear_lookup(phase, wavetable):
     """Lookup from wavetables
@@ -72,17 +71,18 @@ def linear_lookup(phase, wavetable):
     """
     phase = phase[:, :, None]
     len_waveform = wavetable.shape[-1]
-    phase_wavetable = torch.linspace(0.0, 1.0, len_waveform)
+    phase_wavetable = torch.linspace(0.0, 1.0, len_waveform).to(wavetable.device)
+    if len(wavetable.shape) == 2:
+        wavetable = wavetable.unsqueeze(1)
 
     # Get pair-wise distances from the oscillator phase to each wavetable point.
-    # Axes are [batch, time, len_waveform].
+    # Axes are [batch, time, len_waveform]. NOTE: <- this is super large
     phase_distance = abs((phase - phase_wavetable[None, None, :]))
     phase_distance *= len_waveform - 1
     # Weighting for interpolation.
     # Distance is > 1.0 (and thus weights are 0.0) for all but nearest neighbors.
     weights = nn.functional.relu(1.0 - phase_distance) # [batch_size, n_samples, len_waveform]
     weighted_wavetables = weights * wavetable
-
     return torch.sum(weighted_wavetables, dim=-1)
     
 def resample_frames(inputs, n_timesteps, mode='linear', add_endpoint=True):
@@ -90,7 +90,7 @@ def resample_frames(inputs, n_timesteps, mode='linear', add_endpoint=True):
     [n_frames] -> [n_timesteps]
 
     Args:
-        inputs (torch.Tensor): [n_frames], [batch_size, n_frames], [batch_size, n_frames, channels?], or
+        inputs (torch.Tensor): [n_frames], [batch_size, n_frames], [batch_size, n_frames, channels]
         n_timesteps (int): 
         mode (str): 'window' for interpolating with overlapping windows
         add_endpoint ([type]): I think its for windowed interpolation

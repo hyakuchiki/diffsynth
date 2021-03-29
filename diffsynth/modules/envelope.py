@@ -2,8 +2,7 @@ import torch
 from diffsynth.processor import Processor
 
 def soft_clamp_min(x, min_v, T=100):
-    x = torch.sigmoid((min_v-x)*T)*(min_v-x)+x
-    return x
+    return torch.sigmoid((min_v-x)*T)*(min_v-x)+x
 
 class ADSREnvelope(Processor):
     def __init__(self, n_frames=250, name='env'):
@@ -30,8 +29,8 @@ class ADSREnvelope(Processor):
             n_frames = self.n_frames
         # batch, n_frames, 1
         x = torch.linspace(0, 1.0, n_frames).repeat(batch_size, 1).unsqueeze(-1)
-        attack *= note_off
-        A = x / attack
+        x = x.to(attack.device)
+        A = x / (attack*note_off)
         A = torch.clamp(A, max=1.0)
         D = (x - attack) * (sus_level - 1) / decay
         D = torch.clamp(D, max=0.0)
