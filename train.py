@@ -69,8 +69,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('output_dir',   type=str,   help='')
     parser.add_argument('dataset',      type=str,   help='directory of dataset')
+    parser.add_argument('synth',        type=str,   help='synth name')
     parser.add_argument('--epochs',     type=int,   default=400,    help='directory of dataset')
-    parser.add_argument('--batch_size', type=int,   default=64,     help='directory of dataset')
+    parser.add_argument('--batch_size', type=int,   default=128,     help='directory of dataset')
     parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
     # loss
     parser.add_argument('--fft_sizes',        type=int,   default=[64, 128, 256, 512, 1024, 2048], nargs='*', help='')
@@ -103,7 +104,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(dset_train, batch_size=args.batch_size, num_workers=4)
     valid_loader = DataLoader(dset_valid, batch_size=args.batch_size, num_workers=4)
     # create model
-    synth = construct_synths('fixedfm2', device)
+    synth = construct_synths(args.synth, device)
     estimator = DilatedConvEstimator(synth.ext_param_size, 16384).to(device)
     model = EstimatorSynth(estimator, synth).to(device)
     testbatch = next(iter(valid_loader))
@@ -130,4 +131,4 @@ if __name__ == "__main__":
             with torch.no_grad():
                 # save_batch(testbatch['audio'], resyn_audio, i+1, plot_dir, audio_dir)
                 resyn_audio = model(testbatch)
-                save_to_board(i, writer, testbatch['audio'], resyn_audio)
+                save_to_board(i, writer, testbatch['audio'], resyn_audio, 8)

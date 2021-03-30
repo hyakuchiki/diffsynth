@@ -25,6 +25,38 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
     """
     return max_value * torch.sigmoid(x)**math.log(exponent) + threshold
 
+def sin_synthesis(frequencies, amplitudes, n_samples = 64000, sample_rate = 16000, fm_signal=None):
+    """wavetable synthesis similar to the one in DDSP
+
+    Args:
+        frequencies (torch.Tensor): Frame-wise frequency in Hz [batch_size, n_frames, 1]
+        amplitudes (torch.Tensor): Frame-wise amplitude envelope [batch_size, n_frames, 1]
+        fm_signal: audio rate signal for FM (phase modulation)
+    Returns:
+        audio: Sin at the frequency and amplitude of the inputs. Shape[batch_size, n_samples]
+    """
+    # upsample frequency/amplitude envelope
+    batch_size = frequencies.shape[0]
+
+    if len(frequencies.shape) == 3:
+        frequencies = frequencies.squeeze(-1) #[batch_size, n_frames]
+    if len(amplitudes.shape) == 3:
+        amplitudes =  amplitudes.squeeze(-1) #[batch_size, n_frames]
+
+    frq_env = resample_frames(frequencies, n_samples) # [batch_size, n_samples]
+    amp_env = resample_frames(amplitudes, n_samples) # TODO should really use windows to avoid jaggy envelope
+    
+    phase_velocity = frq_env / float(sample_rate)
+    phase = torch.cumsum(phase_velocity, 1)[:, :-1] % 1.0 # [batch_size, n_samples]
+    phase = torch.cat([torch.zeros(batch_size, 1).to(phase.device), phase], dim=1) # exclusive cumsum starting at 0
+    phase_rad = phase * 2 * np.pi
+    if fm_signal is not None:
+        audio = torch.sin(phase_rad+fm_signal)
+    else:
+        audio = torch.sin(phase_rad)
+    audio *= amp_env
+    return audio
+
 def wavetable_synthesis(frequencies, amplitudes, wavetable, n_samples = 64000, sample_rate = 16000, fm_signal=None):
     """wavetable synthesis similar to the one in DDSP
 
@@ -56,7 +88,7 @@ def wavetable_synthesis(frequencies, amplitudes, wavetable, n_samples = 64000, s
     phase = torch.cumsum(phase_velocity, 1)[:, :-1] % 1.0 # [batch_size, n_samples]
     phase = torch.cat([torch.zeros(batch_size, 1).to(phase.device), phase], dim=1) # exclusive cumsum starting at 0
     if fm_signal is not None:
-        audio = linear_lookup(phase+fm_signal, wavetable)
+        audio = linear_lookup(phase+fm_signal / (2*np.pi) , wavetable)
     else:
         audio = linear_lookup(phase, wavetable)
     audio *= amp_env

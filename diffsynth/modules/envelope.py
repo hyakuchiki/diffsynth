@@ -38,7 +38,7 @@ class ADSREnvelope(Processor):
         S = (x - note_off) * (-sus_level / release)
         S = torch.clamp(S, max=0.0)
         S = soft_clamp_min(S, -sus_level)
-        return (total_level*(A+D+S))
+        return torch.clamp(total_level*(A+D+S), min=0.0)
 
     def get_param_sizes(self):
         return {'total_level': 1, 'attack': 1, 'decay': 1, 'sus_level': 1, 'release': 1, 'note_off': 1}
