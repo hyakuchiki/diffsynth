@@ -2,6 +2,7 @@ import torch
 from diffsynth.modules.fm import FM2, FM3
 from diffsynth.modules.envelope import ADSREnvelope
 from diffsynth.synthesizer import Synthesizer
+from diffsynth.modules.frequency import FreqKnobsCoarse
 
 def construct_synths(name, device='cpu'):
     if name == 'fixedfm2':
@@ -26,6 +27,20 @@ def construct_synths(name, device='cpu'):
             (fmosc, {'amp_1': 'env1', 'amp_2': 'env2', 'amp_3': 'env3', 'freq_1': 'FRQ_1', 'freq_2': 'FRQ_2', 'freq_3': 'FRQ_3'})
         ]
         fixed_params = {'NO_1': torch.ones(1)*0.8, 'NO_2': torch.ones(1)*0.8, 'NO_3': torch.ones(1)*0.8, 'FRQ_1': torch.ones(1)*440, 'FRQ_2': torch.ones(1)*440, 'FRQ_3': torch.ones(1)*440}
+    if name == 'coarsefm2':
+        fmosc = FM2(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
+        envm = ADSREnvelope(name='envm').to(device)
+        envc = ADSREnvelope(name='envc').to(device)
+        frq1 = FreqKnobsCoarse(name='frq1').to(device)
+        frq2 = FreqKnobsCoarse(name='frq2').to(device)
+        dag = [
+            (frq1,  {'base_freq': 'BFRQ', 'coarse': 'FRQ1_C', 'detune': 'FRQ1_D'}),
+            (frq2,  {'base_freq': 'BFRQ', 'coarse': 'FRQ2_C', 'detune': 'FRQ2_D'}),
+            (envm, {'total_level': 'TL_M', 'attack': 'AT_M', 'decay': 'DE_M', 'sus_level': 'SU_M', 'release': 'RE_M', 'note_off': 'NO_M'}),
+            (envc, {'total_level': 'TL_C', 'attack': 'AT_C', 'decay': 'DE_C', 'sus_level': 'SU_C', 'release': 'RE_C', 'note_off': 'NO_C'}),
+            (fmosc, {'mod_amp': 'envm', 'car_amp': 'envc', 'mod_freq': 'frq1', 'car_freq': 'frq2'})
+        ]
+        fixed_params = {'NO_M': torch.ones(1)*0.8, 'NO_C': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*110}
     if fixed_params is not None:
         fixed_params = {k: v.to(device) for k, v in fixed_params.items()}
     synth = Synthesizer(dag, fixed_params=fixed_params).to(device)
