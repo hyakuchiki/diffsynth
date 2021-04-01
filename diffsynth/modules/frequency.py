@@ -3,6 +3,28 @@ import torch
 import torch.nn.functional as F
 from diffsynth.processor import Processor
 
+class FreqMultiplier(Processor):
+    
+    def __init__(self, mult_low=0.5, mult_high=8, name='frq'):
+        super().__init__(name=name)
+        # coarse: 0.5, 1, 2, 3, 4, ..., 31
+        multipliers = torch.arange(0, 8, dtype=torch.float)
+        multipliers[0] = 0.5
+        self.register_buffer('multipliers', multipliers)
+        self.mult_low = mult_low
+        self.mult_high = mult_high
+
+    def forward(self, base_freq, mult):
+        multiplier = mult * (self.mult_high - self.mult_low) + self.mult_low
+        frq = base_freq * multiplier
+        return frq
+
+    def get_param_sizes(self):
+        return {'base_freq': 1, 'mult': 1}
+
+    def get_param_range(self):
+        return {'base_freq': (30, 8000), 'mult': (0, 1)}
+
 class FreqKnobsCoarse(Processor):
     # DX7 oscillator frequency knobs without fine
     
