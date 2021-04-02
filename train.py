@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 from diffsynth.loss import SpecWaveLoss
-from diffsynth.estimator import DilatedConvEstimator
+from diffsynth.estimator import DilatedConvEstimator, MelConvEstimator
 from diffsynth.model import EstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
@@ -70,6 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('output_dir',   type=str,   help='')
     parser.add_argument('dataset',      type=str,   help='directory of dataset')
     parser.add_argument('synth',        type=str,   help='synth name')
+    parser.add_argument('--estimator',  type=str,   default='wave', help='estimator name')
     parser.add_argument('--epochs',     type=int,   default=400,    help='directory of dataset')
     parser.add_argument('--batch_size', type=int,   default=128,     help='directory of dataset')
     parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
@@ -105,14 +106,17 @@ if __name__ == "__main__":
     valid_loader = DataLoader(dset_valid, batch_size=args.batch_size, num_workers=4)
     # create model
     synth = construct_synths(args.synth, device)
-    estimator = DilatedConvEstimator(synth.ext_param_size, 16384).to(device)
+    if args.estimator == 'wave':
+        estimator = DilatedConvEstimator(synth.ext_param_size, 16384).to(device)
+    elif args.estimator == 'melconv':
+        estimator = MelConvEstimator(synth.ext_param_size, 16384).to(device)
     model = EstimatorSynth(estimator, synth).to(device)
     testbatch = next(iter(valid_loader))
     testbatch = {name:tensor.to(device) for name, tensor in testbatch.items()}
     
     recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=40, verbose=True, threshold=1e-5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, verbose=True, threshold=1e-5)
     
     best_loss = np.inf
     for i in tqdm.tqdm(range(args.epochs)):

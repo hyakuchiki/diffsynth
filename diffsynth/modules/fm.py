@@ -20,7 +20,7 @@ class FM2(Gen):
     def forward(self, mod_amp, mod_freq, car_amp, car_freq, n_samples=None):
         if self.amp_scale_fn is not None:
             car_amp = self.amp_scale_fn(car_amp)
-        if self.freq_scale_fn is not None: # input is 0~1
+        if self.freq_scale_fn is not None:
             mod_freq = self.freq_scale_fn(mod_freq) 
             car_freq = self.freq_scale_fn(car_freq)
         if n_samples is None:   
@@ -70,7 +70,7 @@ class FM3(Gen):
     def forward(self, amp_1, freq_1, amp_2, freq_2, amp_3, freq_3, n_samples=None):
         if self.amp_scale_fn is not None:
             amp_3 = self.amp_scale_fn(amp_3)
-        if self.freq_scale_fn is not None: # input is 0~1
+        if self.freq_scale_fn is not None:
             freq_1 = self.freq_scale_fn(freq_1) 
             freq_2 = self.freq_scale_fn(freq_2)
             freq_3 = self.freq_scale_fn(freq_3)

@@ -1,8 +1,11 @@
+import math
 import torch
 import torch.nn as nn
 
 from diffsynth.util import midi_to_hz, hz_to_midi
-from diffsynth.layers import Resnet1D, MLP
+from diffsynth.layers import Resnet1D, Resnet2D, MLP, Normalize2d
+from diffsynth.spectral import MelSpec
+from diffsynth.transforms import LogTransform
 
 class Estimator(nn.Module):
     def __init__(self, f0_encoder=None):
@@ -78,5 +81,50 @@ class DilatedConvEstimator(Estimator):
         x = self.convmodel(x) # (batch, channels, n_frames)
         x = x.flatten(1, 2)
         out = self.mlp(x)
-        out = torch.sigmoid(self.out(out)).unsqueeze(1) # (batch, 1, n_frames)
+        out = self.out(out).unsqueeze(1) # (batch, 1, n_params)
+        return out
+
+class MelConvEstimator(Estimator):
+    def __init__(self, output_dims, n_samples, n_mels=128, n_fft=2048, hop=512, n_downsample=3, stride=(4,2), norm='batch', res_depth=2, channels=32, dilation_growth_rate=3, m_conv=1.0, f0_encoder=None, sr=16000):
+        super().__init__(f0_encoder)
+
+        self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sr), LogTransform())
+        self.norm = Normalize2d(norm) if norm else None
+
+        # for n_samples = 16384 and n_fft=2048, hop=512, this is 29
+        spec_len = math.ceil((n_samples - n_fft) / hop) + 1
+        # so the input is (n_mels, 29)
+        final_size = (n_mels, spec_len)
+
+        blocks = []
+        kernel_size = [s*2 for s in stride]
+        pad = [s//2 for s in stride]
+        for i in range(n_downsample):
+            block = nn.Sequential(
+                # downsampling conv, output size is L_in/stride
+                nn.Conv2d(1 if i == 0 else channels, channels, kernel_size, stride, pad),
+                # ResNet with growing dilation, doesn't change size
+                Resnet2D(channels, res_depth, m_conv, dilation_growth_rate),
+            )
+            blocks.append(block)
+            final_size = (final_size[0] // stride[0], final_size[1] // stride[1])
+
+        # output:(batch, channels, final_size[0], final_size[1])
+        self.convmodel = nn.Sequential(*blocks)
+        print(final_size)
+
+        self.mlp = MLP(final_size[0] * final_size[1] * channels, channels)
+        self.out = nn.Linear(channels, output_dims)
+
+
+    def compute_params(self, conditioning):
+        audio = conditioning['audio']
+        """computes melspectrogram of input audio"""
+        x = self.logmel(audio)
+        x = self.norm(x) if self.norm else x # batch, n_mels, time
+        batch_size, _n_mels, n_frames  = x.shape
+        x = self.convmodel(x.unsqueeze(1)) #batch, channel=1, n_mels, time
+        x = x.flatten(1, -1)
+        out = self.mlp(x)
+        out = self.out(out).unsqueeze(1) # (batch, 1, n_params)
         return out

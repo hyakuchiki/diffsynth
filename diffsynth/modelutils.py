@@ -1,4 +1,5 @@
 import torch
+from diffsynth.modules.generators import SineOscillator
 from diffsynth.modules.fm import FM2, FM3
 from diffsynth.modules.envelope import ADSREnvelope
 from diffsynth.synthesizer import Synthesizer
@@ -27,7 +28,7 @@ def construct_synths(name, device='cpu'):
             (fmosc, {'amp_1': 'env1', 'amp_2': 'env2', 'amp_3': 'env3', 'freq_1': 'FRQ_1', 'freq_2': 'FRQ_2', 'freq_3': 'FRQ_3'})
         ]
         fixed_params = {'NO_1': torch.ones(1)*0.8, 'NO_2': torch.ones(1)*0.8, 'NO_3': torch.ones(1)*0.8, 'FRQ_1': torch.ones(1)*440, 'FRQ_2': torch.ones(1)*440, 'FRQ_3': torch.ones(1)*440}
-    if name == 'coarsefm2':
+    elif name == 'coarsefm2':
         fmosc = FM2(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
         envm = ADSREnvelope(name='envm').to(device)
         envc = ADSREnvelope(name='envc').to(device)
@@ -39,7 +40,7 @@ def construct_synths(name, device='cpu'):
             (fmosc, {'mod_amp': 'envm', 'car_amp': 'envc', 'mod_freq': 'frqm', 'car_freq': 'BFRQ'})
         ]
         fixed_params = {'NO_M': torch.ones(1)*0.8, 'NO_C': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
-    if name == 'fm2':
+    elif name == 'fm2':
         fmosc = FM2(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
         envm = ADSREnvelope(name='envm').to(device)
         envc = ADSREnvelope(name='envc').to(device)
@@ -51,6 +52,26 @@ def construct_synths(name, device='cpu'):
             (fmosc, {'mod_amp': 'envm', 'car_amp': 'envc', 'mod_freq': 'frqm', 'car_freq': 'BFRQ'})
         ]
         fixed_params = {'NO_M': torch.ones(1)*0.8, 'NO_C': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
+    elif name == 'coarsesin':
+        sinosc = SineOscillator(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
+        env = ADSREnvelope(name='env').to(device)
+        frq = FreqKnobsCoarse(name='frq').to(device)
+        dag = [
+            (frq,  {'base_freq': 'BFRQ', 'coarse': 'FRQ_C', 'detune': 'FRQ_D'}),
+            (env, {'total_level': 'TL', 'attack': 'AT', 'decay': 'DE', 'sus_level': 'SU', 'release': 'RE', 'note_off': 'NO'}),
+            (sinosc, {'amplitudes': 'env', 'frequencies': 'frq'})
+        ]
+        fixed_params = {'NO': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
+    elif name == 'sin':
+        sinosc = SineOscillator(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
+        env = ADSREnvelope(name='env').to(device)
+        frq = FreqMultiplier(name='frq').to(device)
+        dag = [
+            (frq,  {'base_freq': 'BFRQ', 'mult': 'FRQ_M'}),
+            (env, {'total_level': 'TL', 'attack': 'AT', 'decay': 'DE', 'sus_level': 'SU', 'release': 'RE', 'note_off': 'NO'}),
+            (sinosc, {'amplitudes': 'env', 'frequencies': 'frq'})
+        ]
+        fixed_params = {'NO': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
     if fixed_params is not None:
         fixed_params = {k: v.to(device) for k, v in fixed_params.items()}
     synth = Synthesizer(dag, fixed_params=fixed_params).to(device)

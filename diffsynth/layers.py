@@ -152,3 +152,34 @@ class Resnet1D(nn.Module):
             # residual connection
             x = x + block(x)
         return x
+
+class Resnet2D(nn.Module):
+    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=3):
+        """init
+
+        Args:
+            n_in (int): input channels
+            n_depth (int): depth of resnet
+            m_conv (float, optional): multiplier for intermediate channel. Defaults to 1.0.
+            dilation_growth_rate (int, optional): rate of exponential dilation growth . Defaults to 3.
+        """
+        super().__init__()
+        conv_block = lambda input_channels, inner_channels, dilation: nn.Sequential(
+            nn.ReLU(),
+            # this conv doesn't change size
+            nn.Conv2d(input_channels, inner_channels, 3, 1, dilation, dilation),
+            nn.ReLU(),
+            #1x1 convolution
+            nn.Conv2d(inner_channels, input_channels, 1, 1, 0),
+        )
+        # blocks of convolution with growing dilation
+        conv_blocks = [conv_block(n_in, int(m_conv * n_in),
+                                dilation=dilation_growth_rate ** depth)
+                                for depth in range(n_depth)]
+        self.blocks = nn.ModuleList(conv_blocks)
+
+    def forward(self, x):
+        for block in self.blocks:
+            # residual connection
+            x = x + block(x)
+        return x

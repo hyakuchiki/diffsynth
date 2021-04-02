@@ -247,14 +247,14 @@ class SineOscillator(Gen):
     """Synthesize audio from a saw oscillator
     """
 
-    def __init__(self, n_samples=64000, sample_rate=16000, scale_fn=util.exp_sigmoid, name='sin'):
+    def __init__(self, n_samples=64000, sample_rate=16000, amp_scale_fn=util.exp_sigmoid, freq_scale_fn=util.frequencies_sigmoid, name='sin'):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
-        self.scale_fn = scale_fn
-        self.waveform = torch.sin(torch.linspace(-np.pi, np.pi, 2048))
-    
-    def forward(self, amplitudes, f0_hz, n_samples=None):
+        self.amp_scale_fn = amp_scale_fn
+        self.freq_scale_fn = freq_scale_fn
+
+    def forward(self, amplitudes, frequencies, n_samples=None):
         """forward pass of saw oscillator
 
         Args:
@@ -266,21 +266,28 @@ class SineOscillator(Gen):
         """
         if n_samples is None:   
             n_samples = self.n_samples
-        if self.scale_fn is not None:
-            amplitudes = self.scale_fn(amplitudes)
-        
-        signal = util.wavetable_synthesis(f0_hz, amplitudes, self.waveform, n_samples, self.sample_rate)
+        if self.amp_scale_fn is not None:
+            amplitudes = self.amp_scale_fn(amplitudes)
+        if self.freq_scale_fn is not None:
+            frequencies = self.freq_scale_fn(frequencies)
+
+        signal = util.sin_synthesis(frequencies, amplitudes, n_samples, self.sample_rate)
         return signal
 
     def get_param_sizes(self):
-        return {'amplitudes': 1, 'f0_hz': 1}
+        return {'amplitudes': 1, 'frequencies': 1}
 
     def get_param_range(self):
         param_range = {}
         param_range['f0_hz'] = (0, self.sample_rate/2)
-        if self.scale_fn is None:
+        if self.amp_scale_fn is None:
             param_range['amplitudes'] = (0, 1)
         else:
             param_range['amplitudes'] = (-np.inf, np.inf)
+        if self.freq_scale_fn is None:
+            param_range['frequencies'] = (0, 1)
+        else:
+            param_range['frequencies'] = (-np.inf, np.inf)
         return param_range
+
 #TODO: wavetable scanner
