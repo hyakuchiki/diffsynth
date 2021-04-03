@@ -211,7 +211,7 @@ class SawOscillator(Gen):
         self.n_samples = n_samples
         self.sample_rate = sample_rate
         self.scale_fn = scale_fn
-        self.waveform = torch.linspace(1.0, -1.0, 2048) # saw waveform, will interpolate later anyways
+        self.waveform = torch.linspace(1.0, -1.0, 64) # saw waveform, will interpolate later anyways
     
     def forward(self, amplitudes, f0_hz, n_samples=None):
         """forward pass of saw oscillator
