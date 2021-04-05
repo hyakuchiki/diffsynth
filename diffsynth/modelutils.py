@@ -1,15 +1,17 @@
+import numpy as np
 import torch
-from diffsynth.modules.generators import SineOscillator
+from diffsynth.modules.generators import SineOscillator, SawOscillator
 from diffsynth.modules.fm import FM2, FM3
 from diffsynth.modules.envelope import ADSREnvelope
 from diffsynth.synthesizer import Synthesizer
 from diffsynth.modules.frequency import FreqKnobsCoarse, FreqMultiplier
+from diffsynth.modules.filter import SVFilter
 
-def construct_synths(name, device='cpu'):
+def construct_synths(name):
     if name == 'fixedfm2':
-        fmosc = FM2(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
-        envm = ADSREnvelope(name='envm').to(device)
-        envc = ADSREnvelope(name='envc').to(device)
+        fmosc = FM2(n_samples=16000)
+        envm = ADSREnvelope(name='envm')
+        envc = ADSREnvelope(name='envc')
         dag = [
             (envm, {'total_level': 'TL_M', 'attack': 'AT_M', 'decay': 'DE_M', 'sus_level': 'SU_M', 'release': 'RE_M', 'note_off': 'NO_M'}),
             (envc, {'total_level': 'TL_C', 'attack': 'AT_C', 'decay': 'DE_C', 'sus_level': 'SU_C', 'release': 'RE_C', 'note_off': 'NO_C'}),
@@ -17,10 +19,10 @@ def construct_synths(name, device='cpu'):
         ]
         fixed_params = {'NO_M': torch.ones(1)*0.8, 'NO_C': torch.ones(1)*0.8, 'FRQ_M': torch.ones(1)*440, 'FRQ_C': torch.ones(1)*440}
     elif name == 'fixedfm3':
-        fmosc = FM3(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
-        env1 = ADSREnvelope(name='env1').to(device)
-        env2 = ADSREnvelope(name='env2').to(device)
-        env3 = ADSREnvelope(name='env3').to(device)
+        fmosc = FM3(n_samples=16000)
+        env1 = ADSREnvelope(name='env1')
+        env2 = ADSREnvelope(name='env2')
+        env3 = ADSREnvelope(name='env3')
         dag = [
             (env1, {'total_level': 'TL_1', 'attack': 'AT_1', 'decay': 'DE_1', 'sus_level': 'SU_1', 'release': 'RE_1', 'note_off': 'NO_1'}),
             (env2, {'total_level': 'TL_2', 'attack': 'AT_2', 'decay': 'DE_2', 'sus_level': 'SU_2', 'release': 'RE_2', 'note_off': 'NO_2'}),
@@ -29,10 +31,10 @@ def construct_synths(name, device='cpu'):
         ]
         fixed_params = {'NO_1': torch.ones(1)*0.8, 'NO_2': torch.ones(1)*0.8, 'NO_3': torch.ones(1)*0.8, 'FRQ_1': torch.ones(1)*440, 'FRQ_2': torch.ones(1)*440, 'FRQ_3': torch.ones(1)*440}
     elif name == 'coarsefm2':
-        fmosc = FM2(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
-        envm = ADSREnvelope(name='envm').to(device)
-        envc = ADSREnvelope(name='envc').to(device)
-        frqm = FreqKnobsCoarse(name='frqm').to(device)
+        fmosc = FM2(n_samples=16000)
+        envm = ADSREnvelope(name='envm')
+        envc = ADSREnvelope(name='envc')
+        frqm = FreqKnobsCoarse(name='frqm')
         dag = [
             (frqm,  {'base_freq': 'BFRQ', 'coarse': 'FRQM_C', 'detune': 'FRQM_D'}),
             (envm, {'total_level': 'TL_M', 'attack': 'AT_M', 'decay': 'DE_M', 'sus_level': 'SU_M', 'release': 'RE_M', 'note_off': 'NO_M'}),
@@ -41,10 +43,10 @@ def construct_synths(name, device='cpu'):
         ]
         fixed_params = {'NO_M': torch.ones(1)*0.8, 'NO_C': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
     elif name == 'fm2':
-        fmosc = FM2(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
-        envm = ADSREnvelope(name='envm').to(device)
-        envc = ADSREnvelope(name='envc').to(device)
-        frqm = FreqMultiplier(name='frqm').to(device)
+        fmosc = FM2(n_samples=16000)
+        envm = ADSREnvelope(name='envm')
+        envc = ADSREnvelope(name='envc')
+        frqm = FreqMultiplier(name='frqm')
         dag = [
             (frqm,  {'base_freq': 'BFRQ', 'mult': 'FRQM_M'}),
             (envm, {'total_level': 'TL_M', 'attack': 'AT_M', 'decay': 'DE_M', 'sus_level': 'SU_M', 'release': 'RE_M', 'note_off': 'NO_M'}),
@@ -53,9 +55,9 @@ def construct_synths(name, device='cpu'):
         ]
         fixed_params = {'NO_M': torch.ones(1)*0.8, 'NO_C': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
     elif name == 'coarsesin':
-        sinosc = SineOscillator(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
-        env = ADSREnvelope(name='env').to(device)
-        frq = FreqKnobsCoarse(name='frq').to(device)
+        sinosc = SineOscillator(n_samples=16000)
+        env = ADSREnvelope(name='env')
+        frq = FreqKnobsCoarse(name='frq')
         dag = [
             (frq,  {'base_freq': 'BFRQ', 'coarse': 'FRQ_C', 'detune': 'FRQ_D'}),
             (env, {'total_level': 'TL', 'attack': 'AT', 'decay': 'DE', 'sus_level': 'SU', 'release': 'RE', 'note_off': 'NO'}),
@@ -63,17 +65,23 @@ def construct_synths(name, device='cpu'):
         ]
         fixed_params = {'NO': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
     elif name == 'sin':
-        sinosc = SineOscillator(n_samples=16000, amp_scale_fn=None, freq_scale_fn=None).to(device)
-        env = ADSREnvelope(name='env').to(device)
-        frq = FreqMultiplier(name='frq').to(device)
+        sinosc = SineOscillator(n_samples=16000)
+        env = ADSREnvelope(name='env')
+        frq = FreqMultiplier(name='frq')
         dag = [
             (frq,  {'base_freq': 'BFRQ', 'mult': 'FRQ_M'}),
             (env, {'total_level': 'TL', 'attack': 'AT', 'decay': 'DE', 'sus_level': 'SU', 'release': 'RE', 'note_off': 'NO'}),
             (sinosc, {'amplitudes': 'env', 'frequencies': 'frq'})
         ]
         fixed_params = {'NO': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
-    if fixed_params is not None:
-        fixed_params = {k: v.to(device) for k, v in fixed_params.items()}
-    synth = Synthesizer(dag, fixed_params=fixed_params).to(device)
+    elif name == 'saw_svf':
+        sawosc = SawOscillator(n_samples=16000, name='sawosc')
+        svf = SVFilter(name='svf')
+        dag = [
+            (sawosc, {'amplitudes': 'AMP', 'f0_hz': 'BFRQ'}),
+            (svf, {'audio': 'sawosc', 'g': 'SVF_G', 'twoR': 'SVF_R', 'mix': 'SVF_M'})
+        ]
+        fixed_params = {'BFRQ': torch.ones(1)*440, 'AMP': torch.ones(1)*0.8}
+    synth = Synthesizer(dag, fixed_params=fixed_params)
     return synth
 

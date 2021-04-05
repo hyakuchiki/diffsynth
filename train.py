@@ -105,7 +105,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(dset_train, batch_size=args.batch_size, num_workers=4)
     valid_loader = DataLoader(dset_valid, batch_size=args.batch_size, num_workers=4)
     # create model
-    synth = construct_synths(args.synth, device)
+    synth = construct_synths(args.synth)
     if args.estimator == 'wave':
         estimator = DilatedConvEstimator(synth.ext_param_size, 16384).to(device)
     elif args.estimator == 'melconv':

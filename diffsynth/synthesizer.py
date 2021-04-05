@@ -1,7 +1,13 @@
 import torch
 import torch.nn as nn
 from diffsynth.processor import Gen
+import diffsynth.util as util
 
+SCALE_FNS = {
+    'sigmoid': lambda x, low, high: torch.sigmoid(x)*(high-low) + low,
+    'freq_sigmoid': lambda x, low, high: util.frequencies_sigmoid(x, low, high),
+    'exp_sigmoid': lambda x, low, high: util.exp_sigmoid(x, 10.0, high, 1e-7+low),
+}
 
 class Synthesizer(nn.Module):
     """
@@ -27,16 +33,25 @@ class Synthesizer(nn.Module):
         self.name = name
         self.ext_param_sizes = {}
         self.ext_param_range = {}
+        self.ext_param_types = {}
         self.processor_names = [processor.name for processor, connections in self.dag]
         self.fixed_param_names = list(fixed_params.keys())
-        self.fixed_params = fixed_params
+        for k, v in fixed_params.items():
+            if v is not None:
+                self.register_buffer(k, v)
+            else:
+                setattr(self, k, None)
+        self.processors = nn.ModuleList([]) # register modules for .to(device)
         for processor, connections in self.dag:
+            self.processors.append(processor)
             # parameters that rely on external input and not outputs of other modules and are not fixed
             ext_params = [k for k, v in connections.items() if v not in self.processor_names+self.fixed_param_names]
-            ext_sizes = {connections[k]:v for k,v in processor.get_param_sizes().items() if k in ext_params}
-            ext_range = {connections[k]:v for k,v in processor.get_param_range().items() if k in ext_params}
+            ext_sizes = {connections[k]: desc['size'] for k, desc in processor.get_param_desc().items() if k in ext_params}
+            ext_range = {connections[k]: desc['range'] for k, desc in processor.get_param_desc().items() if k in ext_params}
+            ext_types = {connections[k]: desc['type'] for k, desc in processor.get_param_desc().items() if k in ext_params}
             self.ext_param_sizes.update(ext_sizes)
             self.ext_param_range.update(ext_range)
+            self.ext_param_types.update(ext_types)
             # {'ADD_AMP':1, 'ADD_HARMONIC': n_harmonics, 'CUTOFF': ...}
         self.ext_param_size = sum(self.ext_param_sizes.values())
 
@@ -55,17 +70,23 @@ class Synthesizer(nn.Module):
         dag_input = {}
         batch_size = input_tensor.shape[0]
         n_frames = input_tensor.shape[1]
+        device = input_tensor.device
         # parameters fed from input_tensor
         for ext_param, param_size in self.ext_param_sizes.items():
-            dag_input[ext_param] = input_tensor[:,:, curr_idx:curr_idx+param_size]
+            scale_fn = SCALE_FNS[self.ext_param_types[ext_param]]
+            split_input = input_tensor[:, :, curr_idx:curr_idx+param_size]
+            p_range = self.ext_param_range[ext_param]
+            dag_input[ext_param] = scale_fn(split_input, p_range[0], p_range[1])
             curr_idx += param_size
-        for param_name, param_value in self.fixed_params.items():
+        # Fill fixed_params - no scaling applied
+        for param_name in self.fixed_param_names:
+            param_value = getattr(self, param_name)
             if param_value is None:
                 value = conditioning[param_name] 
             elif len(param_value.shape) == 1:
-                value = param_value[None, None, :].expand(batch_size, n_frames, -1)
+                value = param_value[None, None, :].expand(batch_size, n_frames, -1).to(device)
             elif len(param_value.shape) == 2:
-                value = param_value[None, :, :].expand(batch_size, -1, -1)
+                value = param_value[None, :, :].expand(batch_size, -1, -1).to(device)
             dag_input[param_name] = value
         return dag_input
 
@@ -96,3 +117,18 @@ class Synthesizer(nn.Module):
         outputs[self.name] = outputs[output_name]
         
         return outputs[self.name], outputs
+    
+    def uniform(self, batch_size, n_samples, device):
+        """
+        assumes parameters requiring external input is stationary (n_frames=1)
+        """
+        n_frames = 1
+        param_values = []
+        for pn, psize in self.ext_param_sizes.items():
+            prange = self.ext_param_range[pn]
+            v = torch.rand(batch_size, n_frames, psize)*(prange[1] - prange[0]) + prange[0]
+            param_values.append(v)
+        param_tensor = torch.cat(param_values, dim=-1).to(device)
+        dag_input = self.fill_params(param_tensor)
+        audio, outputs = self(dag_input, n_samples)
+        return param_tensor, audio

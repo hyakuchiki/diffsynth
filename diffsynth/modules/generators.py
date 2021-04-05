@@ -9,11 +9,10 @@ class Additive(Gen):
     """Synthesize audio with a bank of harmonic sinusoidal oscillators.
     code mostly borrowed from DDSP"""
 
-    def __init__(self, n_samples=64000, sample_rate=16000, scale_fn=util.exp_sigmoid, normalize_below_nyquist=True, name='harmonic', n_harmonics=64):
+    def __init__(self, n_samples=16000, sample_rate=16000, normalize_below_nyquist=True, name='harmonic', n_harmonics=64):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
-        self.scale_fn = scale_fn
         self.normalize_below_nyquist = normalize_below_nyquist
         self.n_harmonics = n_harmonics
 
@@ -31,10 +30,6 @@ class Additive(Gen):
         """
         if n_samples is None:
             n_samples = self.n_samples
-        # Scale the amplitudes.
-        if self.scale_fn is not None:
-            amplitudes = self.scale_fn(amplitudes)
-            harmonic_distribution = self.scale_fn(harmonic_distribution)
         if len(f0_hz.shape) < 3: # when given as a condition
             f0_hz = f0_hz[:, :, None]
         # Bandlimit the harmonic distribution.
@@ -49,27 +44,18 @@ class Additive(Gen):
         signal = util.harmonic_synthesis(frequencies=f0_hz, amplitudes=amplitudes, harmonic_distribution=harmonic_distribution, n_samples=n_samples, sample_rate=self.sample_rate)
         return signal
     
-    def get_param_sizes(self):
-        return {'amplitudes': 1, 'harmonic_distribution': self.n_harmonics, 'f0_hz': 1}
-    
-    def get_param_range(self):
-        param_range = {}
-        param_range['f0_hz'] = (0, self.sample_rate/2)
-        if self.scale_fn is None:
-            param_range['amplitudes'] = (0, 1)
-            param_range['harmonic_distribution'] = (0, 1)
-        else:
-            param_range['amplitudes'] = (-np.inf, np.inf)
-            param_range['harmonic_distribution'] = (-np.inf, np.inf)
-        return param_range
+        def get_param_desc(self):
+            return {
+                'amplitudes':               {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'harmonic_distribution':    {'size': self.n_harmonics, 'range': (0, 1), 'type': 'exp_sigmoid'}, 
+                'f0_hz':                    {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
+                }
 
 class Sinusoids(Gen):
-    def __init__(self, n_samples=64000, sample_rate=16000, amp_scale_fn=util.exp_sigmoid, freq_scale_fn=util.frequencies_sigmoid, name='sinusoids', n_sinusoids=64):
+    def __init__(self, n_samples=16000, sample_rate=16000, name='sinusoids', n_sinusoids=64):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
-        self.amp_scale_fn = amp_scale_fn
-        self.freq_scale_fn = freq_scale_fn
         self.n_sinusoids = n_sinusoids
 
     def forward(self, amplitudes, frequencies, n_samples=None):
@@ -84,11 +70,6 @@ class Sinusoids(Gen):
         """
         if n_samples is None:
             n_samples = self.n_samples
-        # Scale the amplitudes.
-        if self.amp_scale_fn is not None:
-            amplitudes = self.amp_scale_fn(amplitudes)
-        if self.freq_scale_fn is not None:
-            frequencies = self.freq_scale_fn(frequencies)
 
         # resample to n_samples
         amplitudes_envelope = util.resample_frames(amplitudes, n_samples)
@@ -96,22 +77,12 @@ class Sinusoids(Gen):
 
         signal = util.oscillator_bank(frequency_envelope, amplitudes_envelope, self.sample_rate)
         return signal
-    
-    def get_param_sizes(self):
-        return {'amplitudes': self.n_sinusoids, 'frequencies': self.n_sinusoids}
 
-    def get_param_range(self):
-        param_range = {}
-        param_range['f0_hz'] = (0, self.sample_rate/2)
-        if self.amp_scale_fn is None:
-            param_range['amplitudes'] = (0, 2) # 2?
-        else:
-            param_range['amplitudes'] = (-np.inf, np.inf)
-        if self.freq_scale_fn is None:
-            param_range['frequencies'] = (0, self.sample_rate/2)
-        else:
-            param_range['frequencies'] = (-np.inf, np.inf)
-        return param_range
+        def get_param_desc(self):
+            return {
+                'amplitudes':   {'size': self.n_sinusoids, 'range': (0, 2), 'type': 'exp_sigmoid'},
+                'frequencies':  {'size': self.n_sinusoids, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
 
 class FilteredNoise(Gen):
     """
@@ -119,7 +90,7 @@ class FilteredNoise(Gen):
     uses frequency sampling
     """
     
-    def __init__(self, filter_size=257, n_samples=64000, scale_fn=util.exp_sigmoid, name='noise', initial_bias=-5.0, amplitude=1.0):
+    def __init__(self, filter_size=257, n_samples=16000, scale_fn=util.exp_sigmoid, name='noise', initial_bias=-5.0, amplitude=1.0):
         super().__init__(name=name)
         self.filter_size = filter_size
         self.n_samples = n_samples
@@ -145,17 +116,11 @@ class FilteredNoise(Gen):
         audio = (torch.rand(batch_size, n_samples)*2.0-1.0).to(freq_response.device) * self.amplitude
         filtered = util.fir_filter(audio, freq_response, self.filter_size)
         return filtered
-    
-    def get_param_sizes(self):
-        return {'freq_response': self.filter_size // 2 + 1}
 
-    def get_param_range(self):
-        param_range = {}
-        if self.scale_fn is None:
-            param_range['freq_response'] = (0, 2) # 2?
-        else:
-            param_range['freq_response'] = (-np.inf, np.inf)
-        return param_range
+    def get_param_desc(self):
+        return {
+                'freq_response':    {'size': self.filter_size // 2 + 1, 'range': (1e-7, 2.0), 'type': 'exp_sigmoid'}, 
+                }
 
 class Wavetable(Gen):
     """Synthesize audio from a wavetable (series of single cycle waveforms).
@@ -163,11 +128,10 @@ class Wavetable(Gen):
     code mostly borrowed from DDSP
     """
 
-    def __init__(self, len_waveform, n_samples=64000, sample_rate=16000, scale_fn=util.exp_sigmoid, name='wavetable'):
+    def __init__(self, len_waveform, n_samples=16000, sample_rate=16000, name='wavetable'):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
-        self.scale_fn = scale_fn
         self.len_waveform = len_waveform
     
     def forward(self, amplitudes, wavetable, f0_hz, n_samples=None):
@@ -183,35 +147,28 @@ class Wavetable(Gen):
         """
         if n_samples is None:
             n_samples = self.n_samples
-        if self.scale_fn is not None:
-            amplitudes = self.scale_fn(amplitudes)
         
         signal = util.wavetable_synthesis(f0_hz, amplitudes, wavetable, n_samples, self.sample_rate)
         return signal
 
-    def get_param_sizes(self):
-        return {'amplitudes': 1, 'wavetable': self.len_waveform, 'f0_hz': 1}
-
-    def get_param_range(self):
-        param_range = {}
-        param_range['f0_hz'] = (0, self.sample_rate/2)
-        param_range['wavetable'] = (-1, 1)
-        if self.scale_fn is None:
-            param_range['amplitudes'] = (0, 1)
-        else:
-            param_range['amplitudes'] = (-np.inf, np.inf)
-        return param_range
+    def get_param_desc(self):
+        return {
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
+                'wavetable':    {'size': self.len_waveform, 'range': (-1, 1), 'type': 'raw'}, 
+                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
 
 class SawOscillator(Gen):
     """Synthesize audio from a saw oscillator
     """
 
-    def __init__(self, n_samples=64000, sample_rate=16000, scale_fn=util.exp_sigmoid, name='wavetable'):
+    def __init__(self, n_samples=16000, sample_rate=16000, name='wavetable'):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
-        self.scale_fn = scale_fn
-        self.waveform = torch.linspace(1.0, -1.0, 64) # saw waveform, will interpolate later anyways
+        # saw waveform
+        waveform = torch.roll(torch.linspace(1.0, -1.0, 64), 32)
+        self.register_buffer('waveform', waveform)
     
     def forward(self, amplitudes, f0_hz, n_samples=None):
         """forward pass of saw oscillator
@@ -225,34 +182,24 @@ class SawOscillator(Gen):
         """
         if n_samples is None:   
             n_samples = self.n_samples
-        if self.scale_fn is not None:
-            amplitudes = self.scale_fn(amplitudes)
         
         signal = util.wavetable_synthesis(f0_hz, amplitudes, self.waveform, n_samples, self.sample_rate)
         return signal
 
-    def get_param_sizes(self):
-        return {'amplitudes': 1, 'f0_hz': 1}
-
-    def get_param_range(self):
-        param_range = {}
-        param_range['f0_hz'] = (0, self.sample_rate/2)
-        if self.scale_fn is None:
-            param_range['amplitudes'] = (0, 1)
-        else:
-            param_range['amplitudes'] = (-np.inf, np.inf)
-        return param_range
+    def get_param_desc(self):
+        return {
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
+                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
 
 class SineOscillator(Gen):
     """Synthesize audio from a saw oscillator
     """
 
-    def __init__(self, n_samples=64000, sample_rate=16000, amp_scale_fn=util.exp_sigmoid, freq_scale_fn=util.frequencies_sigmoid, name='sin'):
+    def __init__(self, n_samples=16000, sample_rate=16000, name='sin'):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
-        self.amp_scale_fn = amp_scale_fn
-        self.freq_scale_fn = freq_scale_fn
 
     def forward(self, amplitudes, frequencies, n_samples=None):
         """forward pass of saw oscillator
@@ -266,28 +213,14 @@ class SineOscillator(Gen):
         """
         if n_samples is None:   
             n_samples = self.n_samples
-        if self.amp_scale_fn is not None:
-            amplitudes = self.amp_scale_fn(amplitudes)
-        if self.freq_scale_fn is not None:
-            frequencies = self.freq_scale_fn(frequencies)
 
         signal = util.sin_synthesis(frequencies, amplitudes, n_samples, self.sample_rate)
         return signal
 
-    def get_param_sizes(self):
-        return {'amplitudes': 1, 'frequencies': 1}
-
-    def get_param_range(self):
-        param_range = {}
-        param_range['f0_hz'] = (0, self.sample_rate/2)
-        if self.amp_scale_fn is None:
-            param_range['amplitudes'] = (0, 1)
-        else:
-            param_range['amplitudes'] = (-np.inf, np.inf)
-        if self.freq_scale_fn is None:
-            param_range['frequencies'] = (0, 1)
-        else:
-            param_range['frequencies'] = (-np.inf, np.inf)
-        return param_range
-
+    def get_param_desc(self):
+        return {
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
+                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
+                
 #TODO: wavetable scanner

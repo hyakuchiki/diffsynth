@@ -58,7 +58,7 @@ class Mfcc(nn.Module):
         return mfcc
 
 def spectrogram(audio, size=2048, hop_length=1024, power=2, center=False, window=None):
-    power_spec = amp(torch.stft(audio, size, window=window, hop_length=hop_length, center=center))
+    power_spec = amp(torch.view_as_real(torch.stft(audio, size, window=window, hop_length=hop_length, center=center, return_complex=True)))
     if power == 2:
         spec = power_spec
     elif power == 1:
@@ -85,7 +85,8 @@ def multiscale_fft(audio, sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=Non
     stft_params = zip(sizes, hop_lengths, win_lengths)
     for n_fft, hl, wl in stft_params:
         window = torch.hann_window(n_fft if wl is None else wl).to(audio.device)
-        stft = torch.stft(audio, n_fft, window=window, hop_length=hl, win_length=wl, center=False)
+        stft = torch.stft(audio, n_fft, window=window, hop_length=hl, win_length=wl, center=False, return_complex=True)
+        stft = torch.view_as_real(stft)
         specs.append(amp(stft))
     return specs
 
@@ -110,7 +111,8 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
 
     # Take STFT.
     hop_length = sample_rate // frame_rate
-    s = torch.stft(audio, n_fft=n_fft, hop_length=hop_length)
+    s = torch.stft(audio, n_fft=n_fft, hop_length=hop_length, return_complex=True)
+    s = torch.view_as_real(s)
     # batch, frequency_bins, n_frames
 
     # Compute power of each bin

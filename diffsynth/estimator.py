@@ -111,7 +111,7 @@ class MelConvEstimator(Estimator):
 
         # output:(batch, channels, final_size[0], final_size[1])
         self.convmodel = nn.Sequential(*blocks)
-        print(final_size)
+        print('output dims after convolution', final_size)
 
         self.mlp = MLP(final_size[0] * final_size[1] * channels, channels)
         self.out = nn.Linear(channels, output_dims)

@@ -33,9 +33,9 @@ class LFO(Processor):
         phase = x * final_phase
         wave = level * torch.sin(phase)
         return wave.unsqueeze(-1)
-
-    def get_param_sizes(self):
-        return {'rate': 1, 'level': 1}
     
-    def get_param_range(self):
-        return {'rate': (1, self.sample_rate/4), 'level': (0, 1)}
+    def get_param_desc(self):
+        return {
+            'rate':     {'size': 1, 'range': (1, 100),  'type': 'sigmoid'},
+            'level':    {'size': 1, 'range': (0, 1),    'type': 'sigmoid'}, 
+            }
