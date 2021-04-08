@@ -8,41 +8,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.estimator import DilatedConvEstimator, MelConvEstimator
-from diffsynth.model import EstimatorSynth
+from diffsynth.model import EstimatorSynth, ParamEstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
-
-def train_epoch(model, loader, recon_loss, optimizer, device, clip=1.0):
-    model.train()
-    sum_loss = 0
-    for data_dict in loader:
-        data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-        resyn_audio = model(data_dict)
-        # Reconstruction loss
-        spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-        batch_loss = spec_loss + wave_loss
-        # Perform backward
-        optimizer.zero_grad()
-        batch_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-        optimizer.step()
-        sum_loss += batch_loss.detach().item()
-    sum_loss /= len(loader)
-    return sum_loss
-
-def eval_epoch(model, loader, recon_loss, device):
-    model.eval()
-    sum_loss = 0
-    with torch.no_grad():
-        for data_dict in loader:
-            data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-            resyn_audio = model(data_dict)
-            # Reconstruction loss
-            spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-            batch_loss = spec_loss + wave_loss
-            sum_loss += batch_loss.detach().item()
-    sum_loss /= len(loader)
-    return sum_loss
 
 class BatchPTDataset(Dataset):
     def __init__(self, base_dir):
@@ -70,12 +38,12 @@ if __name__ == "__main__":
     parser.add_argument('output_dir',   type=str,   help='')
     parser.add_argument('dataset',      type=str,   help='directory of dataset')
     parser.add_argument('synth',        type=str,   help='synth name')
-    parser.add_argument('--estimator',  type=str,   default='wave', help='estimator name')
+    parser.add_argument('--estimator',  type=str,   default='melconv', help='estimator name')
     parser.add_argument('--epochs',     type=int,   default=400,    help='directory of dataset')
     parser.add_argument('--batch_size', type=int,   default=128,     help='directory of dataset')
     parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
     # loss
-    parser.add_argument('--fft_sizes',        type=int,   default=[64, 128, 256, 512, 1024, 2048], nargs='*', help='')
+    parser.add_argument('--fft_sizes',        type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
     parser.add_argument('--hop_lengths',      type=int,   default=None, nargs='*', help='')
     parser.add_argument('--win_lengths',      type=int,   default=None, nargs='*', help='')
     parser.add_argument('--mag_w',          type=float, default=1.0,            help='')
@@ -83,6 +51,7 @@ if __name__ == "__main__":
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
+    parser.add_argument('--param_loss',     action='store_true', help='only parameter loss')
     args = parser.parse_args()
 
     device = 'cuda'
@@ -110,7 +79,11 @@ if __name__ == "__main__":
         estimator = DilatedConvEstimator(synth.ext_param_size, 16384).to(device)
     elif args.estimator == 'melconv':
         estimator = MelConvEstimator(synth.ext_param_size, 16384).to(device)
-    model = EstimatorSynth(estimator, synth).to(device)
+    
+    if args.param_loss:
+        model = ParamEstimatorSynth(estimator, synth).to(device)
+    else:
+        model = EstimatorSynth(estimator, synth).to(device)
     testbatch = next(iter(valid_loader))
     testbatch = {name:tensor.to(device) for name, tensor in testbatch.items()}
     
@@ -120,8 +93,8 @@ if __name__ == "__main__":
     
     best_loss = np.inf
     for i in tqdm.tqdm(range(args.epochs)):
-        train_loss = train_epoch(model, loader=train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device)
-        valid_loss = eval_epoch(model, loader=valid_loader, recon_loss=recon_loss, device=device)
+        train_loss = model.train_epoch(loader=train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device)
+        valid_loss = model.eval_epoch(loader=valid_loader, recon_loss=recon_loss, device=device)
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_loss))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
         writer.add_scalar('loss/train', train_loss, i)

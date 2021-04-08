@@ -55,7 +55,14 @@ class Synthesizer(nn.Module):
             # {'ADD_AMP':1, 'ADD_HARMONIC': n_harmonics, 'CUTOFF': ...}
         self.ext_param_size = sum(self.ext_param_sizes.values())
 
-    def fill_params(self, input_tensor, conditioning=None):
+        range_vec = []
+        for pn, psize in self.ext_param_sizes.items():
+            prange = self.ext_param_range[pn]
+            prange = torch.tensor(prange).expand(psize, -1)
+            range_vec.append(prange)
+        self.range_vec = torch.cat(range_vec, dim=0)
+
+    def fill_params(self, input_tensor, conditioning=None, scaling=True):
         """using network output tensor to fill synth parameter dict
         doesn't take into account parameter range
 
@@ -73,10 +80,13 @@ class Synthesizer(nn.Module):
         device = input_tensor.device
         # parameters fed from input_tensor
         for ext_param, param_size in self.ext_param_sizes.items():
-            scale_fn = SCALE_FNS[self.ext_param_types[ext_param]]
             split_input = input_tensor[:, :, curr_idx:curr_idx+param_size]
-            p_range = self.ext_param_range[ext_param]
-            dag_input[ext_param] = scale_fn(split_input, p_range[0], p_range[1])
+            if scaling:
+                p_range = self.ext_param_range[ext_param]
+                scale_fn = SCALE_FNS[self.ext_param_types[ext_param]]
+                dag_input[ext_param] = scale_fn(split_input, p_range[0], p_range[1])
+            else:
+                dag_input[ext_param] = split_input
             curr_idx += param_size
         # Fill fixed_params - no scaling applied
         for param_name in self.fixed_param_names:
@@ -124,11 +134,16 @@ class Synthesizer(nn.Module):
         """
         n_frames = 1
         param_values = []
+        norm_param_values = []
         for pn, psize in self.ext_param_sizes.items():
             prange = self.ext_param_range[pn]
-            v = torch.rand(batch_size, n_frames, psize)*(prange[1] - prange[0]) + prange[0]
+            norm_v = torch.rand(batch_size, n_frames, psize)
+            v = norm_v*(prange[1] - prange[0]) + prange[0]
+            norm_param_values.append(norm_v)
             param_values.append(v)
+
+        norm_param_tensor = torch.cat(norm_param_values, dim=-1).to(device)
         param_tensor = torch.cat(param_values, dim=-1).to(device)
-        dag_input = self.fill_params(param_tensor)
+        dag_input = self.fill_params(param_tensor, scaling=False)
         audio, outputs = self(dag_input, n_samples)
-        return param_tensor, audio
+        return norm_param_tensor, audio
