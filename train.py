@@ -51,6 +51,7 @@ if __name__ == "__main__":
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
+    parser.add_argument('--p_w',            type=float, default=0.0,            help='')
     parser.add_argument('--param_loss',     action='store_true', help='only parameter loss')
     args = parser.parse_args()
 
@@ -93,19 +94,20 @@ if __name__ == "__main__":
     
     best_loss = np.inf
     for i in tqdm.tqdm(range(args.epochs)):
-        train_loss = model.train_epoch(loader=train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device)
-        valid_loss = model.eval_epoch(loader=valid_loader, recon_loss=recon_loss, device=device)
-        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_loss))
+        train_loss = model.train_epoch(loader=train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, param_loss_w=args.p_w)
+        valid_losses = model.eval_epoch(loader=valid_loader, recon_loss=recon_loss, device=device)
+        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses['spec']))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
-        writer.add_scalar('loss/train', train_loss, i)
-        writer.add_scalar('loss/valid', valid_loss, i)
-        if valid_loss < best_loss:
-            best_loss = valid_loss
+        writer.add_scalar('train/loss', train_loss, i)
+        writer.add_scalar('valid/spec', valid_losses['spec'], i)
+        writer.add_scalar('valid/param', valid_losses['param'], i)
+        if valid_losses['spec'] < best_loss:
+            best_loss = valid_losses['spec']
             torch.save(model, os.path.join(model_dir, 'state_dict.pth'))
         if (i + 1) % 10 == 0:
             # plot spectrograms
             model.eval()
             with torch.no_grad():
                 # save_batch(testbatch['audio'], resyn_audio, i+1, plot_dir, audio_dir)
-                resyn_audio = model(testbatch)
+                resyn_audio, _est_params = model(testbatch)
                 save_to_board(i, writer, testbatch['audio'], resyn_audio, 8)

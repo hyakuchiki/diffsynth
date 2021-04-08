@@ -2,11 +2,12 @@ import torch
 import torch.nn as nn
 from diffsynth.processor import Gen
 import diffsynth.util as util
+import math
 
 SCALE_FNS = {
-    'sigmoid': lambda x, low, high: torch.sigmoid(x)*(high-low) + low,
-    'freq_sigmoid': lambda x, low, high: util.frequencies_sigmoid(x, low, high),
-    'exp_sigmoid': lambda x, low, high: util.exp_sigmoid(x, 10.0, high, 1e-7+low),
+    'sigmoid': lambda x, low, high: x*(high-low) + low,
+    'freq_sigmoid': lambda x, low, high: util.unit_to_hz(x, low, high, clip=False),
+    'exp_sigmoid': lambda x, low, high: util.exp_scale(x, math.log(10.0), high, 1e-7+low),
 }
 
 class Synthesizer(nn.Module):
@@ -64,7 +65,8 @@ class Synthesizer(nn.Module):
 
     def fill_params(self, input_tensor, conditioning=None, scaling=True):
         """using network output tensor to fill synth parameter dict
-        doesn't take into account parameter range
+        input_tensor should be 0~1 (ran through sigmoid or tanh)
+        scales input according to their type and range
 
         Args:
             input_tensor (torch.Tensor): Shape [batch, n_frames, input_size]
@@ -133,17 +135,7 @@ class Synthesizer(nn.Module):
         assumes parameters requiring external input is stationary (n_frames=1)
         """
         n_frames = 1
-        param_values = []
-        norm_param_values = []
-        for pn, psize in self.ext_param_sizes.items():
-            prange = self.ext_param_range[pn]
-            norm_v = torch.rand(batch_size, n_frames, psize)
-            v = norm_v*(prange[1] - prange[0]) + prange[0]
-            norm_param_values.append(norm_v)
-            param_values.append(v)
-
-        norm_param_tensor = torch.cat(norm_param_values, dim=-1).to(device)
-        param_tensor = torch.cat(param_values, dim=-1).to(device)
-        dag_input = self.fill_params(param_tensor, scaling=False)
+        param_tensor = torch.rand(batch_size, n_frames, self.ext_param_size).to(device)
+        dag_input = self.fill_params(param_tensor, scaling=True)
         audio, outputs = self(dag_input, n_samples)
-        return norm_param_tensor, audio
+        return param_tensor, audio

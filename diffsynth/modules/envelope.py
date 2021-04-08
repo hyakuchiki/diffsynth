@@ -28,6 +28,11 @@ class ADSREnvelope(Processor):
         Returns:
             torch.Tensor: envelope signal (batch_size, n_frames, 1)
         """
+        torch.clamp(total_level, min=0, max=1)
+        torch.clamp(attack, min=0, max=1)
+        torch.clamp(decay, min=0, max=1)
+        torch.clamp(sus_level, min=0, max=1)
+        torch.clamp(release, min=0, max=1)
 
         batch_size = attack.shape[0]
         if n_frames is None:

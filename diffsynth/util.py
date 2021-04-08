@@ -7,6 +7,9 @@ import math
 def log_eps(x, eps=1e-4):
     return torch.log(x+eps)
 
+def exp_scale(x, log_exponent=3, max_value=2.0, threshold=1e-7):
+    return max_value * x**log_exponent + threshold
+
 def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
     """Exponentiated Sigmoid pointwise nonlinearity.
 
