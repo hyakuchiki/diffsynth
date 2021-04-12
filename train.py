@@ -26,7 +26,7 @@ class BatchPTDataset(Dataset):
         audios = torch.load(self.audio_files[file_idx])
         params = torch.load(self.param_files[file_idx])
         audio = audios[in_idx]
-        
+
         audio = torch.nn.functional.pad(audio, (0, 16384 - audios.shape[1]))
         return {'audio': audio, 'params': params[in_idx]}
 
@@ -52,6 +52,8 @@ if __name__ == "__main__":
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
     parser.add_argument('--p_w',            type=float, default=0.0,            help='')
+    parser.add_argument('--noise_prob',     type=float, default=0.3,            help='')
+    parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
     parser.add_argument('--param_loss',     action='store_true', help='only parameter loss')
     args = parser.parse_args()
 
@@ -77,9 +79,9 @@ if __name__ == "__main__":
     # create model
     synth = construct_synths(args.synth)
     if args.estimator == 'wave':
-        estimator = DilatedConvEstimator(synth.ext_param_size, 16384).to(device)
+        estimator = DilatedConvEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     elif args.estimator == 'melconv':
-        estimator = MelConvEstimator(synth.ext_param_size, 16384).to(device)
+        estimator = MelConvEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
     if args.param_loss:
         model = ParamEstimatorSynth(estimator, synth).to(device)

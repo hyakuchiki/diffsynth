@@ -8,12 +8,20 @@ from diffsynth.spectral import MelSpec
 from diffsynth.transforms import LogTransform
 
 class Estimator(nn.Module):
-    def __init__(self, f0_encoder=None):
+    def __init__(self, f0_encoder=None, noise_prob=0.3, noise_mag=0.1):
         super().__init__()
         self.f0_encoder = f0_encoder
+        self.noise_prob = noise_prob
+        self.noise_mag = noise_mag
 
     def forward(self, conditioning):
         conditioning = self.fill_f0(conditioning)
+        # add noise
+        x = conditioning['audio']
+        if self.training and self.noise_prob > 0:
+            mask = torch.rand(x.shape[0], 1, 1, device=x.device) < self.noise_prob
+            x = x + (mask * torch.randn_like(x) * self.noise_mag)
+        conditioning['audio'] = x
         param_tensor = self.compute_params(conditioning)
         conditioning['est_param'] = param_tensor
         return conditioning
@@ -41,7 +49,7 @@ class DilatedConvEstimator(Estimator):
     """
     Similar to Jukebox
     """
-    def __init__(self, output_dims, input_dims, n_downsample=6, stride=4, res_depth=4, channels=32, dilation_growth_rate=3, m_conv=1.0, f0_encoder=None):
+    def __init__(self, output_dims, input_dims, n_downsample=6, stride=4, res_depth=4, channels=32, dilation_growth_rate=3, m_conv=1.0, f0_encoder=None, noise_prob=0.3, noise_mag=0.1):
         """
         Args:
             output_dims (int): output dimension
@@ -53,7 +61,7 @@ class DilatedConvEstimator(Estimator):
             dilation_growth_rate (int, optional): exponential growth of dilation. Defaults to 3.
             m_conv (float, optional): multiplier for resnet channels. Defaults to 1.0.
         """
-        super().__init__(f0_encoder)
+        super().__init__(f0_encoder, noise_prob, noise_mag)
         self.output_dims = output_dims
         self.n_downsample = n_downsample
         self.stride = stride
@@ -85,8 +93,8 @@ class DilatedConvEstimator(Estimator):
         return out
 
 class MelConvEstimator(Estimator):
-    def __init__(self, output_dims, n_samples, n_mels=128, n_fft=2048, hop=512, n_downsample=3, stride=(4,2), norm='batch', res_depth=2, channels=32, dilation_growth_rate=3, m_conv=1.0, f0_encoder=None, sr=16000):
-        super().__init__(f0_encoder)
+    def __init__(self, output_dims, n_samples, n_mels=128, n_fft=2048, hop=512, n_downsample=3, stride=(4,2), norm='batch', res_depth=2, channels=32, dilation_growth_rate=3, m_conv=1.0, sr=16000, f0_encoder=None, noise_prob=0.3, noise_mag=0.1):
+        super().__init__(f0_encoder, noise_prob, noise_mag)
 
         self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sr), LogTransform())
         self.norm = Normalize2d(norm) if norm else None
