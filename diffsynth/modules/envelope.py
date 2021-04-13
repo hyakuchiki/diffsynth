@@ -43,10 +43,10 @@ class ADSREnvelope(Processor):
         attack = attack * note_off
         A = x / (attack)
         A = torch.clamp(A, max=1.0)
-        D = (x - attack) * (sus_level - 1) / decay
+        D = (x - attack) * (sus_level - 1) / (decay+1e-5)
         D = torch.clamp(D, max=0.0)
         D = soft_clamp_min(D, sus_level-1)
-        S = (x - note_off) * (-sus_level / release)
+        S = (x - note_off) * (-sus_level / (release+1e-5))
         S = torch.clamp(S, max=0.0)
         S = soft_clamp_min(S, -sus_level)
         signal = (total_level*(A+D+S))*(self.high-self.low) + self.low
