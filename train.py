@@ -7,8 +7,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 from diffsynth.loss import SpecWaveLoss
-from diffsynth.estimator import DilatedConvEstimator, MelConvEstimator
-from diffsynth.model import EstimatorSynth, ParamEstimatorSynth
+from diffsynth.estimator import DilatedConvEstimator, MelConvEstimator, FrameMelConvEstimator
+from diffsynth.model import EstimatorSynth, ParamEstimatorSynth, NoParamEstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
 
@@ -52,9 +52,10 @@ if __name__ == "__main__":
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
     parser.add_argument('--p_w',            type=float, default=0.0,            help='')
-    parser.add_argument('--noise_prob',     type=float, default=0.3,            help='')
+    parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
     parser.add_argument('--param_loss',     action='store_true', help='only parameter loss')
+    parser.add_argument('--no_param',       action='store_true', help='no parameter avail.')
     args = parser.parse_args()
 
     device = 'cuda'
@@ -82,11 +83,16 @@ if __name__ == "__main__":
         estimator = DilatedConvEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     elif args.estimator == 'melconv':
         estimator = MelConvEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+    elif args.estimator == 'framemc':
+        estimator = FrameMelConvEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
     if args.param_loss:
         model = ParamEstimatorSynth(estimator, synth).to(device)
     else:
-        model = EstimatorSynth(estimator, synth).to(device)
+        if args.no_param:
+            model = NoParamEstimatorSynth(estimator, synth).to(device)
+        else:
+            model = EstimatorSynth(estimator, synth).to(device)
     testbatch = next(iter(valid_loader))
     testbatch = {name:tensor.to(device) for name, tensor in testbatch.items()}
     
@@ -101,11 +107,11 @@ if __name__ == "__main__":
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses['spec']))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
         writer.add_scalar('train/loss', train_loss, i)
-        writer.add_scalar('valid/spec', valid_losses['spec'], i)
-        writer.add_scalar('valid/param', valid_losses['param'], i)
+        for k in valid_losses:
+            writer.add_scalar('valid/'+k, valid_losses[k], i)
         if valid_losses['spec'] < best_loss:
             best_loss = valid_losses['spec']
-            torch.save(model, os.path.join(model_dir, 'state_dict.pth'))
+            # torch.save(model, os.path.join(model_dir, 'state_dict.pth'))
         if (i + 1) % 10 == 0:
             # plot spectrograms
             model.eval()

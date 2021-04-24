@@ -32,8 +32,8 @@ class EstimatorSynth(nn.Module):
             torch.Tensor: estimated parameters in Tensor ranged 0~1
         """
         conditioning = self.estimator(conditioning)
-        est_param = conditioning['est_param']
-        return torch.sigmoid(est_param), conditioning
+        conditioning['est_param'] = torch.sigmoid(conditioning['est_param'])
+        return conditioning['est_param'], conditioning
 
     def forward(self, conditioning):
         """
@@ -97,7 +97,7 @@ class ParamEstimatorSynth(EstimatorSynth):
     def __init__(self, estimator, synth):
         super().__init__(estimator, synth)
 
-    def train_epoch(self, loader, recon_loss, optimizer, device, clip=1.0):
+    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
@@ -113,3 +113,45 @@ class ParamEstimatorSynth(EstimatorSynth):
             sum_loss += batch_loss.detach().item()
         sum_loss /= len(loader)
         return sum_loss
+
+class NoParamEstimatorSynth(EstimatorSynth):
+    """
+    Ignore params
+    """
+    def __init__(self, estimator, synth):
+        super().__init__(estimator, synth)
+
+    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, clip=1.0):
+        self.train()
+        sum_loss = 0
+        for data_dict in loader:
+            data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
+            resyn_audio, est_param = self(data_dict)
+            # Reconstruction loss
+            spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
+            batch_loss = spec_loss + wave_loss
+            # Perform backward
+            optimizer.zero_grad()
+            batch_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.parameters(), clip)
+            optimizer.step()
+            sum_loss += batch_loss.detach().item()
+        sum_loss /= len(loader)
+        return sum_loss
+    
+    def eval_epoch(self, loader, recon_loss, device):
+        self.eval()
+        sum_spec_loss = 0
+        sum_wave_loss = 0
+        with torch.no_grad():
+            for data_dict in loader:
+                data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
+                resyn_audio, est_param = self(data_dict)
+                # Reconstruction loss
+                # TODO: Use LSD or something instead of multiscale spec loss?
+                spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
+                sum_spec_loss += spec_loss.detach().item()
+                sum_wave_loss += wave_loss.detach().item()
+        sum_spec_loss /= len(loader)
+        sum_wave_loss /= len(loader)
+        return {'spec': sum_spec_loss, 'wave': sum_wave_loss}

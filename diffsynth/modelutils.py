@@ -54,6 +54,14 @@ def construct_synths(name):
             (fmosc, {'mod_amp': 'envm', 'car_amp': 'envc', 'mod_freq': 'frqm', 'car_freq': 'BFRQ'})
         ]
         fixed_params = {'NO_M': torch.ones(1)*0.8, 'NO_C': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
+    elif name == 'fm2_noenv':
+        fmosc = FM2(n_samples=16000)
+        frqm = FreqMultiplier(name='frqm')
+        dag = [
+            (frqm,  {'base_freq': 'BFRQ', 'mult': 'FRQM_M'}),
+            (fmosc, {'mod_amp': 'MOD_A', 'car_amp': 'CAR_A', 'mod_freq': 'M_FRQ', 'car_freq': 'BFRQ'})
+        ]
+        fixed_params = {'BFRQ': torch.ones(1)*440}
     elif name == 'coarsesin':
         sinosc = SineOscillator(n_samples=16000)
         env = ADSREnvelope(name='env')

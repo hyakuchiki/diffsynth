@@ -56,8 +56,9 @@ class SVFLayer(nn.Module):
     def forward(self, audio, g, twoR, mix):
         """pass audio through SVF
         Args:
-            audio (torch.Tensor): [batch_size, n_samples]
-            All filter parameters are [batch_size, n_samples, 1or3]
+            *** time-first, batch-second ***
+            audio (torch.Tensor): [n_samples, batch_size]
+            All filter parameters are [n_samples, batch_size, 1or3]
             g (torch.Tensor): Cutoff parameter
             twoR (torch.Tensor): Damping parameter
             mix (torch.Tensor): Mixing coefficient of bp, lp and hp
@@ -65,27 +66,27 @@ class SVFLayer(nn.Module):
         Returns:
             [torch.Tensor]: Filtered audio. Shape [batch, n_samples]
         """
-        batch_size, seq_len = audio.shape
-
+        seq_len, batch_size = audio.shape
         T = 1.0 / (1.0 + g * (g + twoR))
-        H = T.unsqueeze(-1) * torch.cat([torch.ones_like(g), -g, g, twoR*g+1], dim=-1).reshape(batch_size, seq_len, 2, 2)
+        H = T.unsqueeze(-1) * torch.cat([torch.ones_like(g), -g, g, twoR*g+1], dim=-1).reshape(seq_len, batch_size, 2, 2)
 
         # Y = gHBx + Hs
         gHB = g * T * torch.cat([torch.ones_like(g), g], dim=-1)
-        # [batch_size, n_samples, 2]
+        # [n_samples, batch_size, 2]
         gHBx = gHB * audio.unsqueeze(-1)
         
-        Y = torch.empty(batch_size, seq_len, 2, device=audio.device)
+        Y = torch.empty(seq_len, batch_size, 2, device=audio.device)
         # initialize filter state
         state = torch.ones(batch_size, 2, device=audio.device)
         for t in range(seq_len):
-            Y[:, t] = gHBx[:, t] + torch.bmm(H[:, t], state.unsqueeze(-1)).squeeze(-1)
-            state = 2 * Y[:, t] - state
+            Y[t] = gHBx[t] + torch.bmm(H[t], state.unsqueeze(-1)).squeeze(-1)
+            state = 2 * Y[t] - state
 
         # HP = x - LP - 2R*BP
         y_hps = audio - twoR.squeeze(-1) * Y[:, :, 0] -  Y[:, :, 1]
         
         y_mixed = twoR.squeeze(-1) * mix[:, :, 0] * Y[:, :, 0] + mix[:, :, 1] * Y[:, :, 1] + mix[:, :, 2] * y_hps
+        y_mixed = y_mixed.permute(1,0).contiguous()
         return y_mixed
 
 class SVFilter(Processor):
@@ -94,26 +95,48 @@ class SVFilter(Processor):
         self.svf = torch.jit.script(SVFLayer())
 
     def forward(self, audio, g, twoR, mix):
+        """pass audio through SVF
+        Args:
+            *** batch-first ***
+            audio (torch.Tensor): [batch_size, n_samples]
+            All filter parameters are [batch_size, frame_size, 1or3]
+            g (torch.Tensor): Cutoff parameter
+            twoR (torch.Tensor): Damping parameter
+            mix (torch.Tensor): Mixing coefficient of bp, lp and hp
+
+        Returns:
+            [torch.Tensor]: Filtered audio. Shape [batch, n_samples]
+        """
         batch_size, seq_len = audio.shape
-        g = torch.clamp(g, min=1e-6, max=1)
-        twoR = torch.clamp(twoR, min=1e-6, max=np.sqrt(2))
+        audio = audio.permute(1, 0).contiguous()
+
+        # g = torch.clamp(g, min=1e-6, max=1)
+        # twoR = torch.clamp(twoR, min=1e-6, max=np.sqrt(2))
+
         if g.ndim == 2: # not time changing
-            g[:, None, :].expand(-1, seq_len, -1)
-        elif g.shape[1] != seq_len:
-            g = util.resample_frames(g, seq_len)
+            g = g[None, :,  :].expand(seq_len, -1, -1)
+        else:
+            if g.shape[1] != seq_len:
+                g = util.resample_frames(g, seq_len)
+            g = g.permute(1, 0, 2).contiguous()
 
         if twoR.ndim == 2: # not time changing
-            twoR[:, None, :].expand(-1, seq_len, -1)
-        elif twoR.shape[1] != seq_len:
-            twoR = util.resample_frames(twoR, seq_len)
+            twoR = twoR[None, :,  :].expand(seq_len, -1, -1)
+        else:
+            if twoR.shape[1] != seq_len:
+                twoR = util.resample_frames(twoR, seq_len)
+            twoR = twoR.permute(1, 0, 2).contiguous()
 
         # normalize mixing coefficient
         mix = mix / mix.sum(dim=-1, keepdim=True)
         if mix.ndim == 2: # not time changing
-            mix[:, None, :].expand(-1, seq_len, -1)
-        elif mix.shape[1] != seq_len:
-            mix = util.resample_frames(mix, seq_len)
+            mix[None, :, :].expand(seq_len, -1, -1)
+        else:
+            if mix.shape[1] != seq_len:
+                mix = util.resample_frames(mix, seq_len)
+            mix = mix.permute(1, 0, 2).contiguous()
 
+        # time, batch, (1~3)
         filt_audio = self.svf(audio, g, twoR, mix)
         return filt_audio
 
