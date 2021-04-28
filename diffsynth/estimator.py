@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from diffsynth.util import midi_to_hz, hz_to_midi
-from diffsynth.layers import Resnet1D, Resnet2D, MLP, Normalize2d
+from diffsynth.layers import Resnet1D, Resnet2D, MLP, Normalize2d, CoordConv1D
 from diffsynth.spectral import MelSpec
 from diffsynth.transforms import LogTransform
 
@@ -152,6 +152,7 @@ class FrameMelConvEstimator(Estimator):
         self.channels = channels
         self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sr), LogTransform())
         self.norm = Normalize2d(norm) if norm else None
+        # Regular Conv
         self.convs = nn.ModuleList(
             [nn.Sequential(nn.Conv1d(1, channels, kernel_size,
                         padding=kernel_size // 2,
@@ -163,6 +164,18 @@ class FrameMelConvEstimator(Estimator):
             + [nn.Sequential(nn.Conv1d(channels, channels, kernel_size,
                          padding=kernel_size // 2,
                          stride=strides[-1]))])
+        #  CoordConv
+        # self.convs = nn.ModuleList(
+        #     [nn.Sequential(CoordConv1D(1, channels, n_mels, kernel_size=1,
+        #                 padding=0,
+        #                 stride=1))]
+        #     + [nn.Sequential(nn.Conv1d(channels, channels, kernel_size,
+        #                  padding=kernel_size // 2,
+        #                  stride=strides[i]), nn.BatchNorm1d(channels), nn.ReLU())
+        #                  for i in range(0, len(strides) - 1)]
+        #     + [nn.Sequential(nn.Conv1d(channels, channels, kernel_size,
+        #                  padding=kernel_size // 2,
+        #                  stride=strides[-1]))])
         self.l_out = self.get_downsampled_length()[-1] # downsampled in frequency dimension
         self.mlp = MLP(self.l_out * channels, channels, loop=2)
         self.out = nn.Linear(channels, output_dims)    
@@ -177,10 +190,10 @@ class FrameMelConvEstimator(Estimator):
         # x: [batch_size*n_frames, 1, n_mels]
         for i, conv in enumerate(self.convs):
             x = conv(x)
-            x = torch.relu(x)
         x = x.view(batch_size, n_frames, self.channels, self.l_out)
         x = x.view(batch_size, n_frames, -1)
         output = self.mlp(x)
+        output = self.out(output)
         # output: [batch_size, n_frames, latent_size]
         return output
 
@@ -192,3 +205,58 @@ class FrameMelConvEstimator(Estimator):
             l = (l + 2 * conv_module.padding[0] - conv_module.dilation[0] * (conv_module.kernel_size[0] - 1) - 1) // conv_module.stride[0] + 1
             lengths.append(l)
         return lengths
+
+frame_setting_stride = {
+    # n_downsample, stride
+    "coarse": (5, 4), # hop: 1024
+    "fine": (9, 2), # 512, too deep?
+    "finer": (8, 2), # 256
+    "finest": (6, 2) # 64
+}
+
+class FrameDilatedConvEstimator(Estimator):
+    """
+    Frame by Frame Parameters
+    Similar to Jukebox
+    """
+    def __init__(self, output_dims, frame_setting='finer', res_depth=4, channels=32, dilation_growth_rate=3, m_conv=1.0, f0_encoder=None, noise_prob=0.0, noise_mag=0.0):
+        """
+        Args:
+            output_dims (int): output channels
+            res_depth (int, optional): depth of each resnet. Defaults to 4.
+            channels (int, optional): conv channels. Defaults to 32.
+            dilation_growth_rate (int, optional): exponential growth of dilation. Defaults to 3.
+            m_conv (float, optional): multiplier for resnet channels. Defaults to 1.0.
+        """
+        super().__init__(f0_encoder, noise_prob, noise_mag)
+        self.n_downsample, self.stride = frame_setting_stride[frame_setting]
+        self.output_dims = output_dims
+        blocks = []
+        kernel_size, pad = self.stride * 2, self.stride // 2
+        for i in range(self.n_downsample):
+            block = nn.Sequential(
+                # downsampling conv, output size is L_in/stride
+                nn.Conv1d(1 if i == 0 else channels, channels, kernel_size, self.stride, pad),
+                # ResNet with growing dilation
+                Resnet1D(channels, res_depth, m_conv, dilation_growth_rate),
+            )
+            blocks.append(block)
+        # # doesn't change size
+        # block = nn.Conv1d(channels, output_dims, 3, 1, 1) # output:(batch, output_dims, n_frames)
+        # blocks.append(block)
+        self.model = nn.Sequential(*blocks)
+        self.out = nn.Linear(channels, output_dims)   
+
+    def get_z_frames(self, n_samples):
+        n_frames = n_samples // (self.stride ** self.n_downsample)
+        return n_frames
+
+    def compute_params(self, conditioning):
+        x = conditioning['audio']
+        batch_size, n_samples = x.shape
+        x = x.unsqueeze(1)
+        x = self.model(x) # (batch, channels, n_frames)
+        x = x.permute(0, 2, 1)
+        x = self.out(x)
+        assert x.shape == (batch_size, self.get_z_frames(n_samples), self.output_dims)
+        return x

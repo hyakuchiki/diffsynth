@@ -117,6 +117,31 @@ class Normalize2d(nn.Module):
         x = self.norm(x.unsqueeze(1)).squeeze(1) # dummy channel
         return x
 
+class CoordConv1D(nn.Module):
+    # input dimension needs to be fixed
+    def __init__(self, in_channels, out_channels, input_dim, kernel_size=1, stride=1, padding=0, dilation=1, groups=1, bias=True):
+        super().__init__()
+        # 0~1
+        pos_embed = torch.arange(input_dim, dtype=torch.float)[None, None, :] / (input_dim)
+        # -1~1
+        pos_embed = pos_embed * 2 -1
+        self.input_dim = input_dim
+        self.kernel_size = (kernel_size,)
+        self.stride = (stride,)
+        self.padding = (padding,)
+        self.dilation = (dilation,)
+
+        self.register_buffer('pos_embed', pos_embed)
+        self.conv = nn.Conv1d(in_channels+1, out_channels, kernel_size, stride, padding, dilation, groups, bias)
+
+    def forward(self, x):
+        # x: batch, C_in, H
+        batch_size, c_in, h = x.shape
+        coord = self.pos_embed.expand(batch_size, -1, -1)
+        x = torch.cat([x, coord], dim=1)
+        x = self.conv(x)
+        return x
+
 class Resnet1D(nn.Module):
     """Resnet for encoder/decoder similar to Jukebox
     """

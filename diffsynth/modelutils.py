@@ -59,7 +59,7 @@ def construct_synths(name):
         frqm = FreqMultiplier(name='frqm')
         dag = [
             (frqm,  {'base_freq': 'BFRQ', 'mult': 'FRQM_M'}),
-            (fmosc, {'mod_amp': 'MOD_A', 'car_amp': 'CAR_A', 'mod_freq': 'M_FRQ', 'car_freq': 'BFRQ'})
+            (fmosc, {'mod_amp': 'MOD_A', 'car_amp': 'CAR_A', 'mod_freq': 'frqm', 'car_freq': 'BFRQ'})
         ]
         fixed_params = {'BFRQ': torch.ones(1)*440}
     elif name == 'coarsesin':
@@ -82,6 +82,14 @@ def construct_synths(name):
             (sinosc, {'amplitudes': 'env', 'frequencies': 'frq'})
         ]
         fixed_params = {'NO': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
+    elif name == 'sin_noenv':
+        sinosc = SineOscillator(n_samples=16000)
+        frq = FreqMultiplier(name='frq')
+        dag = [
+            (frq,  {'base_freq': 'BFRQ', 'mult': 'FRQ_M'}),
+            (sinosc, {'amplitudes': 'SIN_A', 'frequencies': 'frq'})
+        ]
+        fixed_params = {'BFRQ': torch.ones(1)*440}
     elif name == 'saw_svf':
         sawosc = SawOscillator(n_samples=16000, name='sawosc')
         svf = SVFilter(name='svf')
