@@ -15,7 +15,7 @@ class Synthesizer(nn.Module):
     defined by a DAG of processors in a similar manner to DDSP
     """
 
-    def __init__(self, dag, name='synth', fixed_params={}):
+    def __init__(self, dag, name='synth', fixed_params={}, static_params=[]):
         """
         
         Args:
@@ -28,6 +28,7 @@ class Synthesizer(nn.Module):
             name (str, optional): Defaults to 'synth'.
             fixed_params: Values of fixed parameters ex.) {'INPUT_KEY': Tensor([(n_frames), param_size])
                           Value=None if the param is added to dict as conditioning later
+            static_params: These values use only the last frame of the input_tensor
         """
         super().__init__()
         self.dag = dag
@@ -55,13 +56,13 @@ class Synthesizer(nn.Module):
             self.ext_param_types.update(ext_types)
             # {'ADD_AMP':1, 'ADD_HARMONIC': n_harmonics, 'CUTOFF': ...}
         self.ext_param_size = sum(self.ext_param_sizes.values())
-
         range_vec = []
         for pn, psize in self.ext_param_sizes.items():
             prange = self.ext_param_range[pn]
             prange = torch.tensor(prange).expand(psize, -1)
             range_vec.append(prange)
         self.range_vec = torch.cat(range_vec, dim=0)
+        self.static_params = static_params
 
     def fill_params(self, input_tensor, conditioning=None, scaling=True):
         """using network output tensor to fill synth parameter dict
@@ -83,6 +84,8 @@ class Synthesizer(nn.Module):
         # parameters fed from input_tensor
         for ext_param, param_size in self.ext_param_sizes.items():
             split_input = input_tensor[:, :, curr_idx:curr_idx+param_size]
+            if ext_param in self.static_params:
+                split_input = split_input[:, -1:, :]
             if scaling:
                 p_range = self.ext_param_range[ext_param]
                 scale_fn = SCALE_FNS[self.ext_param_types[ext_param]]

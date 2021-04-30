@@ -37,6 +37,27 @@ class MelSpec(nn.Module):
         mel_spec = self.mel_scale(spec)
         return mel_spec
 
+class Spec(nn.Module):
+    def __init__(self, n_fft=2048, hop_length=1024, power=2, pad_end=True, center=False):
+        """
+        
+        """
+        super().__init__()
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.power = power
+        self.pad_end = pad_end
+        self.center = center
+    
+    def forward(self, audio):
+        if self.pad_end:
+            _batch_dim, l_x = audio.shape
+            remainder = (l_x - self.n_fft) % self.hop_length
+            pad = 0 if (remainder == 0) else self.hop_length - remainder
+            audio = F.pad(audio, (0, pad), 'constant')
+        spec = spectrogram(audio, self.n_fft, self.hop_length, self.power, self.center)
+        return spec
+
 class Mfcc(nn.Module):
     def __init__(self, n_fft=2048, hop_length=1024, n_mels=128, n_mfcc=40, norm='ortho', sample_rate=16000, f_min=40, f_max=7600, pad_end=True, center=False):
         """

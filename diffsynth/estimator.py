@@ -4,8 +4,32 @@ import torch.nn as nn
 
 from diffsynth.util import midi_to_hz, hz_to_midi
 from diffsynth.layers import Resnet1D, Resnet2D, MLP, Normalize2d, CoordConv1D
-from diffsynth.spectral import MelSpec
+from diffsynth.spectral import MelSpec, Spec, Mfcc
 from diffsynth.transforms import LogTransform
+
+def get_window_hop(enc_frame_setting):
+    if enc_frame_setting not in ['coarse', 'fine', 'finer']:
+        raise ValueError(
+            '`enc_frame_setting` currently limited to coarse, fine, finer')
+    # copied from ddsp
+    # this only works when x.shape[-1] = 64000
+    z_audio_spec = {
+        'coarse': { # 62 or something
+            'n_fft': 2048,
+            'overlap': 0.5
+        },
+        'fine': {
+            'n_fft': 1024,
+            'overlap': 0.5
+        },
+        'finer': {
+            'n_fft': 1024,
+            'overlap': 0.75
+        },
+    }
+    n_fft = z_audio_spec[enc_frame_setting]['n_fft']
+    hop_length = int((1 - z_audio_spec[enc_frame_setting]['overlap']) * n_fft)
+    return n_fft, hop_length
 
 class Estimator(nn.Module):
     def __init__(self, f0_encoder=None, noise_prob=0.3, noise_mag=0.1):
@@ -45,6 +69,30 @@ class Estimator(nn.Module):
                 pass
         return conditioning
 
+class MFCCEstimator(Estimator):
+    def __init__(self, output_dims, input_dims, frame_setting='finer', n_mfccs=30, sample_rate=16000, num_layers=2, hidden_size=512, dropout_p=0.0, norm='instance', f0_encoder=None, noise_prob=0.0, noise_mag=0.0):
+        super().__init__(f0_encoder, noise_prob, noise_mag)
+        n_fft, hop = get_window_hop(frame_setting)
+        self.frame_setting = frame_setting
+        self.mfcc = Mfcc(n_fft, hop, 128, n_mfccs, f_min=20, sample_rate=sample_rate)
+        self.norm = Normalize2d(norm) if norm else None
+        self.gru = nn.GRU(n_mfccs, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True)
+        self.out = nn.Linear(hidden_size, output_dims)
+    
+    def compute_params(self, conditioning):
+        audio = conditioning['audio']
+        x = self.mfcc(audio)
+        x = self.norm(x) if self.norm else x
+        x = x.permute(0, 2, 1).contiguous()
+        # batch_size, n_frames, _n_mfcc = x.shape
+        output, _hidden = self.gru(x)
+        return self.out(output)
+
+"""
+deprecated estimators
+use static parameters only or doesn't have GRUs
+
+"""
 class DilatedConvEstimator(Estimator):
     """
     Similar to Jukebox
@@ -199,6 +247,58 @@ class FrameMelConvEstimator(Estimator):
 
     def get_downsampled_length(self):
         l = self.n_mels
+        lengths = [l]
+        for conv in self.convs:
+            conv_module = conv[0]
+            l = (l + 2 * conv_module.padding[0] - conv_module.dilation[0] * (conv_module.kernel_size[0] - 1) - 1) // conv_module.stride[0] + 1
+            lengths.append(l)
+        return lengths
+
+class FrameSpecConvEstimator(Estimator):
+    """
+    Use regular spectrograms
+    Frame by Frame Parameters
+    """
+    def __init__(self, output_dims, channels=32, kernel_size=7, strides=[2,2,2,2], n_fft=1024, hop=256, norm='batch', sr=16000, f0_encoder=None, noise_prob=0.0, noise_mag=0.0):
+        super().__init__(f0_encoder, noise_prob, noise_mag)
+    
+        self.channels = channels
+        self.log_spec = nn.Sequential(Spec(n_fft=n_fft, hop_length=hop), LogTransform())
+        self.norm = Normalize2d(norm) if norm else None
+        self.fft_dims = n_fft // 2 + 1
+        # Regular Conv
+        self.convs = nn.ModuleList(
+            [nn.Sequential(nn.Conv1d(1, channels, kernel_size,
+                        padding=kernel_size // 2,
+                        stride=strides[0]), nn.BatchNorm1d(channels), nn.ReLU())]
+            + [nn.Sequential(nn.Conv1d(channels, channels, kernel_size,
+                         padding=kernel_size // 2,
+                         stride=strides[i]), nn.BatchNorm1d(channels), nn.ReLU())
+                         for i in range(1, len(strides))])
+        self.l_out = self.get_downsampled_length()[-1] # downsampled in frequency dimension
+        print('output dims after convolution', self.l_out)
+        self.mlp = MLP(self.l_out * channels, channels, loop=2)
+        self.out = nn.Linear(channels, output_dims)
+
+    def compute_params(self, conditioning):
+        audio = conditioning['audio']
+        x = self.log_spec(audio)
+        x = self.norm(x)
+        batch_size, fft_dims, n_frames = x.shape
+        x = x.permute(0, 2, 1).contiguous()
+        x = x.view(-1, self.fft_dims).unsqueeze(1)
+        # x: [batch_size*n_frames, 1, n_mels]
+        for i, conv in enumerate(self.convs):
+            x = conv(x)
+        x = x.view(batch_size, n_frames, self.channels, self.l_out)
+        x = x.view(batch_size, n_frames, -1)
+        output = self.mlp(x)
+        output = self.out(output)
+        # output: [batch_size, n_frames, latent_size]
+        return output
+
+    def get_downsampled_length(self):
+        l = self.fft_dims
         lengths = [l]
         for conv in self.convs:
             conv_module = conv[0]

@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 from diffsynth.loss import SpecWaveLoss
-from diffsynth.estimator import DilatedConvEstimator, MelConvEstimator, FrameMelConvEstimator, FrameDilatedConvEstimator
+from diffsynth.estimator import MFCCEstimator
 from diffsynth.model import EstimatorSynth, ParamEstimatorSynth, NoParamEstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
@@ -79,14 +79,8 @@ if __name__ == "__main__":
     valid_loader = DataLoader(dset_valid, batch_size=args.batch_size, num_workers=4)
     # create model
     synth = construct_synths(args.synth)
-    if args.estimator == 'wave':
-        estimator = DilatedConvEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
-    elif args.estimator == 'melconv':
-        estimator = MelConvEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
-    elif args.estimator == 'framemc':
-        estimator = FrameMelConvEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
-    elif args.estimator == 'framedc':
-        estimator = FrameDilatedConvEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+    if args.estimator == 'mfccgru':
+        estimator = MFCCEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
     if args.param_loss:
         model = ParamEstimatorSynth(estimator, synth).to(device)

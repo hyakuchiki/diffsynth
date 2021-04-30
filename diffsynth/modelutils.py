@@ -6,8 +6,10 @@ from diffsynth.modules.envelope import ADSREnvelope
 from diffsynth.synthesizer import Synthesizer
 from diffsynth.modules.frequency import FreqKnobsCoarse, FreqMultiplier
 from diffsynth.modules.filter import SVFilter
+from diffsynth.modules.harmor import Harmor
 
 def construct_synths(name):
+    static_params = []
     if name == 'fixedfm2':
         fmosc = FM2(n_samples=16000)
         envm = ADSREnvelope(name='envm')
@@ -72,6 +74,14 @@ def construct_synths(name):
             (sinosc, {'amplitudes': 'env', 'frequencies': 'frq'})
         ]
         fixed_params = {'NO': torch.ones(1)*0.8, 'BFRQ': torch.ones(1)*440}
+    elif name == 'coarsesin_noenv':
+        sinosc = SineOscillator(n_samples=16000)
+        frq = FreqKnobsCoarse(name='frq')
+        dag = [
+            (frq,  {'base_freq': 'BFRQ', 'coarse': 'FRQ_C', 'detune': 'FRQ_D'}),
+            (sinosc, {'amplitudes': 'SIN_A', 'frequencies': 'frq'})
+        ]
+        fixed_params = {'BFRQ': torch.ones(1)*440}
     elif name == 'sin':
         sinosc = SineOscillator(n_samples=16000)
         env = ADSREnvelope(name='env')
@@ -98,6 +108,28 @@ def construct_synths(name):
             (svf, {'audio': 'sawosc', 'g': 'SVF_G', 'twoR': 'SVF_R', 'mix': 'SVF_M'})
         ]
         fixed_params = {'BFRQ': torch.ones(1)*440, 'AMP': torch.ones(1)*0.8}
-    synth = Synthesizer(dag, fixed_params=fixed_params)
+    elif name == 'harmor':
+        harmor = Harmor(n_samples=16000, name='harmor', n_oscs=1)
+        dag = [
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'})
+        ]
+        fixed_params = {'BFRQ': torch.ones(1)*440}
+        static_params = ['M_OSC', 'Q_FILT']
+    elif name == 'harmor_free':
+        harmor = Harmor(n_samples=16000, name='harmor', n_oscs=1)
+        dag = [
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'})
+        ]
+        fixed_params = {}
+        static_params = ['M_OSC', 'Q_FILT', 'BFRQ']
+    elif name == 'harmor_2oscfree':
+        harmor = Harmor(n_samples=16000, name='harmor', sep_amp=False, sep_f0s=True, n_oscs=2)
+        dag = [
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'}),
+            ]
+        fixed_params = {}
+        static_params=['BFRQ', 'M_OSC', 'Q_FILT']
+    synth = Synthesizer(dag, fixed_params=fixed_params, static_params=static_params)
+
     return synth
 
