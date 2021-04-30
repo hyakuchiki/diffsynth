@@ -70,7 +70,7 @@ class Estimator(nn.Module):
         return conditioning
 
 class MFCCEstimator(Estimator):
-    def __init__(self, output_dims, input_dims, frame_setting='finer', n_mfccs=30, sample_rate=16000, num_layers=2, hidden_size=512, dropout_p=0.0, norm='instance', f0_encoder=None, noise_prob=0.0, noise_mag=0.0):
+    def __init__(self, output_dims, frame_setting='finer', n_mfccs=30, sample_rate=16000, num_layers=2, hidden_size=512, dropout_p=0.0, norm='instance', f0_encoder=None, noise_prob=0.0, noise_mag=0.0):
         super().__init__(f0_encoder, noise_prob, noise_mag)
         n_fft, hop = get_window_hop(frame_setting)
         self.frame_setting = frame_setting
@@ -87,6 +87,52 @@ class MFCCEstimator(Estimator):
         # batch_size, n_frames, _n_mfcc = x.shape
         output, _hidden = self.gru(x)
         return self.out(output)
+
+class MelEstimator(Estimator):
+    def __init__(self, output_dims, n_mels=128, channels=64, kernel_size=7, strides=[2,2,2], n_fft=1024, hop=256, num_layers=1, hidden_size=512, dropout_p=0.0, norm='batch', sample_rate=16000, f0_encoder=None, noise_prob=0.0, noise_mag=0.0):
+        super().__init__(f0_encoder, noise_prob, noise_mag)
+        self.n_mels = n_mels
+        self.channels = channels
+        self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sample_rate), LogTransform())
+        self.norm = Normalize2d(norm) if norm else None
+        # Regular Conv
+        self.convs = nn.ModuleList(
+            [nn.Sequential(nn.Conv1d(1, channels, kernel_size,
+                        padding=kernel_size // 2,
+                        stride=strides[0]), nn.BatchNorm1d(channels), nn.ReLU())]
+            + [nn.Sequential(nn.Conv1d(channels, channels, kernel_size,
+                         padding=kernel_size // 2,
+                         stride=strides[i]), nn.BatchNorm1d(channels), nn.ReLU())
+                         for i in range(1, len(strides))])
+        self.l_out = self.get_downsampled_length()[-1] # downsampled in frequency dimension
+        print('output dims after convolution', self.l_out)
+        self.gru = nn.GRU(self.l_out * channels, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True)
+        self.out = nn.Linear(hidden_size, output_dims)    
+    
+    def compute_params(self, conditioning):
+        audio = conditioning['audio']
+        x = self.logmel(audio)
+        x = self.norm(x)
+        batch_size, n_mels, n_frames = x.shape
+        x = x.permute(0, 2, 1).contiguous()
+        x = x.view(-1, self.n_mels).unsqueeze(1)
+        # x: [batch_size*n_frames, 1, n_mels]
+        for i, conv in enumerate(self.convs):
+            x = conv(x)
+        x = x.view(batch_size, n_frames, self.channels, self.l_out)
+        x = x.view(batch_size, n_frames, -1)
+        output, _hidden = self.gru(x)
+        # output: [batch_size, n_frames, output_dims]
+        return self.out(output)
+
+    def get_downsampled_length(self):
+        l = self.n_mels
+        lengths = [l]
+        for conv in self.convs:
+            conv_module = conv[0]
+            l = (l + 2 * conv_module.padding[0] - conv_module.dilation[0] * (conv_module.kernel_size[0] - 1) - 1) // conv_module.stride[0] + 1
+            lengths.append(l)
+        return lengths
 
 """
 deprecated estimators

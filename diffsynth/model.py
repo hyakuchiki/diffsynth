@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import diffsynth.util as util
+
+
 
 class EstimatorSynth(nn.Module):
     """
@@ -11,17 +14,15 @@ class EstimatorSynth(nn.Module):
         self.estimator = estimator
         self.synth = synth
 
-    def normalize_param(self, param_tensor):
-        # min~max -> 0~1
-        min_vec = self.range_vec[:, 0]
-        max_vec = self.range_vec[:, 1]
-        return (param_tensor - min_vec) / (max_vec - min_vec) 
-
-    def scale_param(self, norm_tensor):
-        # 0~1 -> min~max
-        min_vec = self.range_vec[:, 0]
-        max_vec = self.range_vec[:, 1]
-        return norm_tensor * (max_vec - min_vec) + min_vec
+    def param_loss(self, synth_output, param_dict):
+        loss = 0
+        for k, target in param_dict.items():
+            output_name = self.synth.dag_summary[k]
+            x = synth_output[output_name]
+            x = util.resample_frames(x, target.shape[1])
+            loss += F.l1_loss(x, target)
+        loss = loss / len(param_dict.keys())
+        return loss
 
     def estimate_param(self, conditioning):
         """
@@ -45,18 +46,20 @@ class EstimatorSynth(nn.Module):
         """
         audio_length = conditioning['audio'].shape[1]
         est_param, conditioning = self.estimate_param(conditioning)
-        params_dict = self.synth.fill_params(est_param, conditioning, scaling=True)
+        params_dict = self.synth.fill_params(est_param, conditioning)
         resyn_audio, outputs = self.synth(params_dict, audio_length)
-        return resyn_audio, est_param
+        return resyn_audio, outputs
 
     def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w=0.0, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
+            params = data_dict.pop('params')
+            params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-            resyn_audio, est_param = self(data_dict)
+            resyn_audio, outputs = self(data_dict)
             # Parameter loss
-            param_loss = F.l1_loss(est_param, data_dict['params'])
+            param_loss = self.param_loss(outputs, params)
             # Reconstruction loss
             spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
             batch_loss = spec_loss + wave_loss + param_loss_w * param_loss
@@ -76,10 +79,12 @@ class EstimatorSynth(nn.Module):
         sum_param_loss = 0
         with torch.no_grad():
             for data_dict in loader:
+                params = data_dict.pop('params')
+                params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-                resyn_audio, est_param = self(data_dict)
+                resyn_audio, outputs = self(data_dict)
                 # Reconstruction loss
-                param_loss = F.l1_loss(est_param, data_dict['params'])
+                param_loss = self.param_loss(outputs, params)
                 # TODO: Use LSD or something instead of multiscale spec loss?
                 spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
                 sum_spec_loss += spec_loss.detach().item()
@@ -101,10 +106,12 @@ class ParamEstimatorSynth(EstimatorSynth):
         self.train()
         sum_loss = 0
         for data_dict in loader:
+            params = data_dict.pop('params')
+            params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-            est_param, _conditioning = self.estimate_param(data_dict)
+            resyn_audio, outputs = self(data_dict)
             # Parameter loss
-            batch_loss = F.mse_loss(est_param, data_dict['params'])
+            batch_loss = self.param_loss(outputs, params)
             # Perform backward
             optimizer.zero_grad()
             batch_loss.backward()
@@ -125,6 +132,7 @@ class NoParamEstimatorSynth(EstimatorSynth):
         self.train()
         sum_loss = 0
         for data_dict in loader:
+            params = data_dict.pop('params')
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
             resyn_audio, est_param = self(data_dict)
             # Reconstruction loss
@@ -145,6 +153,7 @@ class NoParamEstimatorSynth(EstimatorSynth):
         sum_wave_loss = 0
         with torch.no_grad():
             for data_dict in loader:
+                params = data_dict.pop('params')
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
                 resyn_audio, est_param = self(data_dict)
                 # Reconstruction loss

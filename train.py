@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 from diffsynth.loss import SpecWaveLoss
-from diffsynth.estimator import MFCCEstimator
+from diffsynth.estimator import MFCCEstimator, MelEstimator
 from diffsynth.model import EstimatorSynth, ParamEstimatorSynth, NoParamEstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
@@ -19,16 +19,16 @@ class BatchPTDataset(Dataset):
         self.last_idx = int(self.audio_files[-1].split('_')[-1][:-3])
         self.param_dir = os.path.join(base_dir, 'param')
         self.param_files = sorted(glob.glob(os.path.join(self.param_dir, '*.pt')))
-    
+
     def __getitem__(self, idx):
         file_idx = idx // 64
         in_idx = idx % 64
         audios = torch.load(self.audio_files[file_idx])
         params = torch.load(self.param_files[file_idx])
+        param_dict = {k:pv[in_idx] for k, pv in params.items()}
         audio = audios[in_idx]
-
         audio = torch.nn.functional.pad(audio, (0, 16384 - audios.shape[1]))
-        return {'audio': audio, 'params': params[in_idx]}
+        return {'audio': audio, 'params': param_dict}
 
     def __len__(self):
         return self.last_idx+1
@@ -80,7 +80,9 @@ if __name__ == "__main__":
     # create model
     synth = construct_synths(args.synth)
     if args.estimator == 'mfccgru':
-        estimator = MFCCEstimator(synth.ext_param_size, 16384, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+        estimator = MFCCEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+    elif args.estimator == 'melgru':
+        estimator = MelEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
     if args.param_loss:
         model = ParamEstimatorSynth(estimator, synth).to(device)
@@ -90,6 +92,7 @@ if __name__ == "__main__":
         else:
             model = EstimatorSynth(estimator, synth).to(device)
     testbatch = next(iter(valid_loader))
+    testbatch.pop('params')
     testbatch = {name:tensor.to(device) for name, tensor in testbatch.items()}
     
     recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
@@ -107,7 +110,7 @@ if __name__ == "__main__":
             writer.add_scalar('valid/'+k, valid_losses[k], i)
         if valid_losses['spec'] < best_loss:
             best_loss = valid_losses['spec']
-            # torch.save(model, os.path.join(model_dir, 'state_dict.pth'))
+            torch.save(model, os.path.join(model_dir, 'state_dict.pth'))
         if (i + 1) % 10 == 0:
             # plot spectrograms
             model.eval()

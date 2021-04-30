@@ -19,12 +19,11 @@ class Harmor(Gen):
     Then a low-pass filter applied to all
     """
 
-    def __init__(self, n_samples=16000, sample_rate=16000, name='harmor', n_harmonics=24, sep_amp=False, sep_f0s=False, n_oscs=2):
+    def __init__(self, n_samples=16000, sample_rate=16000, name='harmor', n_harmonics=24, sep_amp=False, n_oscs=2):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
         self.n_harmonics = n_harmonics
-        self.sep_f0s = sep_f0s
         self.sep_amp = sep_amp
         self.n_oscs = n_oscs
 
@@ -36,17 +35,27 @@ class Harmor(Gen):
         odd[1::2] = 0
         sqr_harm_dist = 4/np.pi * (1/k) * odd
         self.register_buffer('sqr_harm_dist', sqr_harm_dist)
+        n_amps = self.n_oscs if self.sep_amp else 1
+        self.param_desc = {
+            'amplitudes':       {'size': n_amps, 'range': (0, 1),    'type': 'sigmoid'},
+            'osc_mix':          {'size': self.n_oscs, 'range': (0, 1),    'type': 'sigmoid'}, 
+            'f0_hz':            {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'},
+            'f0_mult':          {'size': self.n_oscs-1, 'range': (1, 8), 'type': 'sigmoid'},
+            'cutoff':           {'size': 1, 'range': (30.0, self.sample_rate/2), 'type': 'freq_sigmoid'},
+            'q':                {'size': 1, 'range': (0.0, 2.0), 'type': 'sigmoid'}
+            }
         
 
-    def forward(self, amplitudes, osc_mix, f0_hz, cutoff, q, n_samples=None):
+    def forward(self, amplitudes, osc_mix, f0_hz, f0_mult, cutoff, q, n_samples=None):
         """Synthesize audio with additive synthesizer from controls.
 
         Args:
         amplitudes: Amplitudes tensor of shape. [batch, n_frames, self.n_oscs or 1]
         osc_mix: saw<->sqr mix. [batch, n_frames, self.n_oscs]
-        f0_hz: f0 of each oscillators. [batch, n_frames, self.n_oscs or 1]
+        f0_hz: f0 of each oscillators. [batch, n_frames, 1]
+        f0_mult: f0 of each oscillators. [batch, n_frames or 1, self.n_oscs-1]
         cutoff: cutoff frequency in hz. [batch, n_frames, 1]
-        q: resonance param 0~around 1.5 is ok. [batch, n_frames, 1]
+        q: resonance param 0~around 1.5 is ok. [batch, n_frames or 1, 1]
 
         Returns:
         signal: A tensor of harmonic waves of shape [batch, n_samples].
@@ -54,8 +63,13 @@ class Harmor(Gen):
         if n_samples is None:
             n_samples = self.n_samples
 
-        if not self.sep_f0s:
-            f0_hz = f0_hz.expand(-1, -1, self.n_oscs)
+        batch, n_frames, _ = f0_hz.shape
+        first_mult = torch.ones(batch, n_frames, 1).to(f0_hz.device)
+        f0_mult = f0_mult.expand(-1, n_frames, -1)
+        f0_mult = torch.cat([first_mult, f0_mult], dim=-1)
+        f0_hz = f0_hz.expand(-1, -1, self.n_oscs)
+        f0_hz = f0_hz * f0_mult
+
         if not self.sep_amp:
             amplitudes = amplitudes.expand(-1, -1, self.n_oscs)
         harm_dist = (1-osc_mix).unsqueeze(-1) * self.saw_harm_dist + osc_mix.unsqueeze(-1) * self.sqr_harm_dist
@@ -80,14 +94,3 @@ class Harmor(Gen):
         # removes sinusoids above nyquist freq.
         audio = util.oscillator_bank(frequency_envelopes, filt_amplitude, sample_rate=self.sample_rate)
         return audio
-    
-    def get_param_desc(self):
-        n_f0s = self.n_oscs if self.sep_f0s else 1
-        n_amps = self.n_oscs if self.sep_amp else 1
-        return {
-            'amplitudes':       {'size': n_amps, 'range': (0, 1),    'type': 'exp_sigmoid'},
-            'osc_mix':          {'size': self.n_oscs, 'range': (0, 1),    'type': 'sigmoid'}, 
-            'f0_hz':            {'size': n_f0s, 'range': (32.7, 2093), 'type': 'freq_sigmoid'},
-            'cutoff':           {'size': 1, 'range': (30.0, self.sample_rate/2), 'type': 'freq_sigmoid'},
-            'q':                {'size': 1, 'range': (0.0, 2.0), 'type': 'sigmoid'}
-            }

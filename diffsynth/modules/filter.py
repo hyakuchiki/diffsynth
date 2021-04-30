@@ -15,6 +15,10 @@ class FIRFilter(Processor):
         self.filter_size = filter_size
         self.scale_fn = scale_fn
         self.initial_bias = initial_bias
+        self.param_desc = {
+                'freq_response':    {'size': self.filter_size // 2 + 1, 'range': (1e-7, 2.0), 'type': 'exp_sigmoid'}, 
+                'audio':            {'size':1, 'range': (-1, 1), 'type': 'raw'},
+                }
 
     def forward(self, audio, freq_response):
         """pass audio through FIRfilter
@@ -28,12 +32,6 @@ class FIRFilter(Processor):
         if self.scale_fn is not None:
             freq_response = self.scale_fn(freq_response + self.initial_bias)
         return util.fir_filter(audio, freq_response, self.filter_size)
-    
-    def get_param_desc(self):
-        return {
-                'freq_response':    {'size': self.filter_size // 2 + 1, 'range': (1e-7, 2.0), 'type': 'exp_sigmoid'}, 
-                'audio':            {'size':1, 'range': (-1, 1), 'type': 'raw'},
-                }
 
 # class SVFCell(nn.Module):
 #     def __init__(self):
@@ -93,6 +91,12 @@ class SVFilter(Processor):
     def __init__(self, name='svf'):
         super().__init__(name)
         self.svf = torch.jit.script(SVFLayer())
+        self.param_desc = {
+                'audio':    {'size': 1, 'range': (-1, 1), 'type': 'sigmoid'},
+                'g':        {'size': 1, 'range': (1e-6, 1), 'type': 'sigmoid'}, 
+                'twoR':     {'size': 1, 'range': (1e-6, np.sqrt(2)), 'type': 'sigmoid'},
+                'mix':      {'size': 3, 'range': (0, 1.0), 'type': 'sigmoid'}
+                }
 
     def forward(self, audio, g, twoR, mix):
         """pass audio through SVF
@@ -139,11 +143,3 @@ class SVFilter(Processor):
         # time, batch, (1~3)
         filt_audio = self.svf(audio, g, twoR, mix)
         return filt_audio
-
-    def get_param_desc(self):
-        return {
-                'audio':    {'size': 1, 'range': (-1, 1), 'type': 'sigmoid'},
-                'g':        {'size': 1, 'range': (1e-6, 1), 'type': 'sigmoid'}, 
-                'twoR':     {'size': 1, 'range': (1e-6, np.sqrt(2)), 'type': 'sigmoid'},
-                'mix':      {'size': 3, 'range': (0, 1.0), 'type': 'sigmoid'}
-                }

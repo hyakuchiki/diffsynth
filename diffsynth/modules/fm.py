@@ -13,7 +13,12 @@ class FM2(Gen):
         self.n_samples = n_samples
         self.sample_rate = sample_rate
         self.mod_ratio = np.log(max_mod_index+1)
-
+        self.param_desc = {
+                'mod_amp':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'mod_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'car_amp':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'car_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
+                }
 
     def forward(self, mod_amp, mod_freq, car_amp, car_freq, n_samples=None):
         if n_samples is None:   
@@ -26,14 +31,6 @@ class FM2(Gen):
         car_signal = util.sin_synthesis(car_freq, car_amp, n_samples, self.sample_rate, mod_signal)
         return car_signal
 
-    def get_param_desc(self):
-        return {
-                'mod_amp':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
-                'mod_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                'car_amp':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
-                'car_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
-                }
-
 class FM3(Gen):
     """
     Osc1 -> Osc2 -> Osc3 -> output
@@ -45,6 +42,14 @@ class FM3(Gen):
         self.sample_rate = sample_rate
         # self.mod_ratio = np.log(max_mod_index+1)
         self.max_mod_index = max_mod_index
+        self.param_desc = {
+                'amp_1':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'freq_1':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'},
+                'amp_2':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'freq_2':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'amp_3':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'freq_3':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
+                }
 
     def forward(self, amp_1, freq_1, amp_2, freq_2, amp_3, freq_3, n_samples=None):
         if n_samples is None:   
@@ -54,13 +59,3 @@ class FM3(Gen):
         audio_2 = util.sin_synthesis(freq_2, amp_2, n_samples, self.sample_rate, fm_signal=audio_1 * self.max_mod_index)
         audio_3 = util.sin_synthesis(freq_3, amp_3, n_samples, self.sample_rate, fm_signal=audio_2 * self.max_mod_index)
         return audio_3
-
-    def get_param_desc(self):
-        return {
-                'amp_1':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
-                'freq_1':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'},
-                'amp_2':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
-                'freq_2':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                'amp_3':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
-                'freq_3':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
-                }

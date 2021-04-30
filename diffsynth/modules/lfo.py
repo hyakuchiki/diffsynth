@@ -11,6 +11,10 @@ class LFO(Processor):
         self.n_secs = n_secs
         self.sample_rate = sample_rate
         self.n_samples = int(n_secs*sample_rate)
+        self.param_desc = {
+            'rate':     {'size': 1, 'range': (1, 100),  'type': 'sigmoid'},
+            'level':    {'size': 1, 'range': (0, 1),    'type': 'sigmoid'}, 
+            }
     
     def forward(self, rate, level, n_samples=None):
         """
@@ -33,9 +37,3 @@ class LFO(Processor):
         phase = x * final_phase
         wave = level * torch.sin(phase)
         return wave.unsqueeze(-1)
-    
-    def get_param_desc(self):
-        return {
-            'rate':     {'size': 1, 'range': (1, 100),  'type': 'sigmoid'},
-            'level':    {'size': 1, 'range': (0, 1),    'type': 'sigmoid'}, 
-            }

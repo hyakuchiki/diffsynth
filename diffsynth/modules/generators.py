@@ -15,6 +15,11 @@ class Additive(Gen):
         self.sample_rate = sample_rate
         self.normalize_below_nyquist = normalize_below_nyquist
         self.n_harmonics = n_harmonics
+        self.param_desc = {
+                'amplitudes':               {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'harmonic_distribution':    {'size': self.n_harmonics, 'range': (0, 1), 'type': 'exp_sigmoid'}, 
+                'f0_hz':                    {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
+                }
 
     def forward(self, amplitudes, harmonic_distribution, f0_hz, n_samples=None):
         """Synthesize audio with additive synthesizer from controls.
@@ -43,13 +48,6 @@ class Additive(Gen):
 
         signal = util.harmonic_synthesis(frequencies=f0_hz, amplitudes=amplitudes, harmonic_distribution=harmonic_distribution, n_samples=n_samples, sample_rate=self.sample_rate)
         return signal
-    
-        def get_param_desc(self):
-            return {
-                'amplitudes':               {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
-                'harmonic_distribution':    {'size': self.n_harmonics, 'range': (0, 1), 'type': 'exp_sigmoid'}, 
-                'f0_hz':                    {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
-                }
 
 class Sinusoids(Gen):
     def __init__(self, n_samples=16000, sample_rate=16000, name='sinusoids', n_sinusoids=64):
@@ -57,6 +55,10 @@ class Sinusoids(Gen):
         self.n_samples = n_samples
         self.sample_rate = sample_rate
         self.n_sinusoids = n_sinusoids
+        self.param_desc = {
+                'amplitudes':   {'size': self.n_sinusoids, 'range': (0, 2), 'type': 'exp_sigmoid'},
+                'frequencies':  {'size': self.n_sinusoids, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
 
     def forward(self, amplitudes, frequencies, n_samples=None):
         """Synthesize audio with sinusoid oscillators
@@ -78,12 +80,6 @@ class Sinusoids(Gen):
         signal = util.oscillator_bank(frequency_envelope, amplitudes_envelope, self.sample_rate)
         return signal
 
-        def get_param_desc(self):
-            return {
-                'amplitudes':   {'size': self.n_sinusoids, 'range': (0, 2), 'type': 'exp_sigmoid'},
-                'frequencies':  {'size': self.n_sinusoids, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                }
-
 class FilteredNoise(Gen):
     """
     taken from ddsp-pytorch and ddsp
@@ -97,6 +93,9 @@ class FilteredNoise(Gen):
         self.scale_fn = scale_fn
         self.initial_bias = initial_bias
         self.amplitude = amplitude
+        self.param_desc = {
+                'freq_response':    {'size': self.filter_size // 2 + 1, 'range': (1e-7, 2.0), 'type': 'exp_sigmoid'}, 
+                }
 
     def forward(self, freq_response, n_samples=None):
         """generate Gaussian white noise through FIRfilter
@@ -117,11 +116,6 @@ class FilteredNoise(Gen):
         filtered = util.fir_filter(audio, freq_response, self.filter_size)
         return filtered
 
-    def get_param_desc(self):
-        return {
-                'freq_response':    {'size': self.filter_size // 2 + 1, 'range': (1e-7, 2.0), 'type': 'exp_sigmoid'}, 
-                }
-
 class Wavetable(Gen):
     """Synthesize audio from a wavetable (series of single cycle waveforms).
     wavetable is parameterized
@@ -133,7 +127,12 @@ class Wavetable(Gen):
         self.n_samples = n_samples
         self.sample_rate = sample_rate
         self.len_waveform = len_waveform
-    
+        self.param_desc = {
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
+                'wavetable':    {'size': self.len_waveform, 'range': (-1, 1), 'type': 'raw'}, 
+                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
+
     def forward(self, amplitudes, wavetable, f0_hz, n_samples=None):
         """forward pass
 
@@ -151,13 +150,6 @@ class Wavetable(Gen):
         signal = util.wavetable_synthesis(f0_hz, amplitudes, wavetable, n_samples, self.sample_rate)
         return signal
 
-    def get_param_desc(self):
-        return {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
-                'wavetable':    {'size': self.len_waveform, 'range': (-1, 1), 'type': 'raw'}, 
-                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                }
-
 class SawOscillator(Gen):
     """Synthesize audio from a saw oscillator
     """
@@ -169,6 +161,10 @@ class SawOscillator(Gen):
         # saw waveform
         waveform = torch.roll(torch.linspace(1.0, -1.0, 64), 32)
         self.register_buffer('waveform', waveform)
+        self.param_desc = {
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
+                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
     
     def forward(self, amplitudes, f0_hz, n_samples=None):
         """forward pass of saw oscillator
@@ -186,12 +182,6 @@ class SawOscillator(Gen):
         signal = util.wavetable_synthesis(f0_hz, amplitudes, self.waveform, n_samples, self.sample_rate)
         return signal
 
-    def get_param_desc(self):
-        return {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
-                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                }
-
 class SineOscillator(Gen):
     """Synthesize audio from a saw oscillator
     """
@@ -200,6 +190,10 @@ class SineOscillator(Gen):
         super().__init__(name=name)
         self.n_samples = n_samples
         self.sample_rate = sample_rate
+        self.param_desc = {
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
+                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                }
 
     def forward(self, amplitudes, frequencies, n_samples=None):
         """forward pass of saw oscillator
@@ -216,11 +210,5 @@ class SineOscillator(Gen):
 
         signal = util.sin_synthesis(frequencies, amplitudes, n_samples, self.sample_rate)
         return signal
-
-    def get_param_desc(self):
-        return {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
-                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                }
                 
 #TODO: wavetable scanner

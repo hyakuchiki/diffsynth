@@ -9,16 +9,14 @@ class FreqMultiplier(Processor):
         super().__init__(name=name)
         self.mult_low = mult_low
         self.mult_high = mult_high
+        self.param_desc = {
+                'base_freq':{'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'mult':     {'size': 1, 'range': (self.mult_low, self.mult_high), 'type': 'sigmoid'},
+                }
 
     def forward(self, base_freq, mult):
         frq = base_freq * mult
         return frq
-    
-    def get_param_desc(self):
-        return {
-                'base_freq':{'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                'mult':     {'size': 1, 'range': (self.mult_low, self.mult_high), 'type': 'sigmoid'},
-                }
 
 class FreqKnobsCoarse(Processor):
     # DX7 oscillator frequency knobs without fine
@@ -30,6 +28,11 @@ class FreqKnobsCoarse(Processor):
         multipliers[0] = 0.5
         self.register_buffer('multipliers', multipliers)
         self.coarse_scale_fn = coarse_scale_fn
+        self.param_desc = {
+                'base_freq':{'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'coarse':   {'size': 8, 'range': (-np.inf, np.inf), 'type': 'raw'},
+                'detune':   {'size': 8, 'range': (-7, 7), 'type': 'sigmoid'},
+            }
 
     def forward(self, base_freq, coarse, detune):
         if self.coarse_scale_fn == 'gumbel':
@@ -46,21 +49,3 @@ class FreqKnobsCoarse(Processor):
         frq = base_freq * coarse_value
         frq = (frq + detune) #Hz
         return frq
-
-    def get_param_desc(self):
-        return {
-                'base_freq':{'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                'coarse':   {'size': 8, 'range': (-np.inf, np.inf), 'type': 'raw'},
-                'detune':   {'size': 8, 'range': (-7, 7), 'type': 'sigmoid'},
-                }
-
-    def get_param_sizes(self):
-        return {'base_freq': 1, 'coarse': 8, 'detune': 1}
-
-    def get_param_range(self):
-        param_range = {'base_freq': (self.low_frq, self.high_frq), 'coarse': (-np.inf, np.inf), 'detune': (0, 1)}
-        if self.coarse_scale_fn is not None:
-            param_range['coarse'] = (-np.inf, np.inf)
-        if self.detune_scale_fn is not None:
-            param_range['detune'] = (-np.inf, np.inf)
-        return param_range

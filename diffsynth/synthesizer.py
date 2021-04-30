@@ -4,12 +4,6 @@ from diffsynth.processor import Gen
 import diffsynth.util as util
 import math
 
-SCALE_FNS = {
-    'sigmoid': lambda x, low, high: x*(high-low) + low,
-    'freq_sigmoid': lambda x, low, high: util.unit_to_hz(x, low, high, clip=False),
-    'exp_sigmoid': lambda x, low, high: util.exp_scale(x, math.log(10.0), high, 1e-7+low),
-}
-
 class Synthesizer(nn.Module):
     """
     defined by a DAG of processors in a similar manner to DDSP
@@ -34,8 +28,6 @@ class Synthesizer(nn.Module):
         self.dag = dag
         self.name = name
         self.ext_param_sizes = {}
-        self.ext_param_range = {}
-        self.ext_param_types = {}
         self.processor_names = [processor.name for processor, connections in self.dag]
         self.fixed_param_names = list(fixed_params.keys())
         for k, v in fixed_params.items():
@@ -44,27 +36,21 @@ class Synthesizer(nn.Module):
             else:
                 setattr(self, k, None)
         self.processors = nn.ModuleList([]) # register modules for .to(device)
+        self.dag_summary = {}
         for processor, connections in self.dag:
             self.processors.append(processor)
             # parameters that rely on external input and not outputs of other modules and are not fixed
             ext_params = [k for k, v in connections.items() if v not in self.processor_names+self.fixed_param_names]
-            ext_sizes = {connections[k]: desc['size'] for k, desc in processor.get_param_desc().items() if k in ext_params}
-            ext_range = {connections[k]: desc['range'] for k, desc in processor.get_param_desc().items() if k in ext_params}
-            ext_types = {connections[k]: desc['type'] for k, desc in processor.get_param_desc().items() if k in ext_params}
+            ext_sizes = {connections[k]: desc['size'] for k, desc in processor.param_desc.items() if k in ext_params}
             self.ext_param_sizes.update(ext_sizes)
-            self.ext_param_range.update(ext_range)
-            self.ext_param_types.update(ext_types)
             # {'ADD_AMP':1, 'ADD_HARMONIC': n_harmonics, 'CUTOFF': ...}
+            # summarize dag
+            self.dag_summary.update({processor.name +'_'+ input_name: output_name for input_name, output_name in connections.items()})
         self.ext_param_size = sum(self.ext_param_sizes.values())
-        range_vec = []
-        for pn, psize in self.ext_param_sizes.items():
-            prange = self.ext_param_range[pn]
-            prange = torch.tensor(prange).expand(psize, -1)
-            range_vec.append(prange)
-        self.range_vec = torch.cat(range_vec, dim=0)
         self.static_params = static_params
 
-    def fill_params(self, input_tensor, conditioning=None, scaling=True):
+
+    def fill_params(self, input_tensor, conditioning=None):
         """using network output tensor to fill synth parameter dict
         input_tensor should be 0~1 (ran through sigmoid or tanh)
         scales input according to their type and range
@@ -86,14 +72,9 @@ class Synthesizer(nn.Module):
             split_input = input_tensor[:, :, curr_idx:curr_idx+param_size]
             if ext_param in self.static_params:
                 split_input = split_input[:, -1:, :]
-            if scaling:
-                p_range = self.ext_param_range[ext_param]
-                scale_fn = SCALE_FNS[self.ext_param_types[ext_param]]
-                dag_input[ext_param] = scale_fn(split_input, p_range[0], p_range[1])
-            else:
-                dag_input[ext_param] = split_input
+            dag_input[ext_param] = split_input
             curr_idx += param_size
-        # Fill fixed_params - no scaling applied
+        # Fill fixed_params
         for param_name in self.fixed_param_names:
             param_value = getattr(self, param_name)
             if param_value is None:
@@ -118,11 +99,14 @@ class Synthesizer(nn.Module):
 
         for node in self.dag:
             processor, connections = node
+            # fixed params are not in 0~1 and do not need to be scaled
+            scaled = [k for k in connections if connections[k] in self.fixed_param_names]
             inputs = {key: outputs[connections[key]] for key in connections}
+            # list of fixed parameters that
             if n_samples and isinstance(processor, Gen):
                 inputs.update({'n_samples': n_samples})
             # Run processor.
-            signal = processor(**inputs)
+            signal = processor.process(scaled_params=scaled, **inputs)
 
             # Add the outputs of processor for use in subsequent processors
             outputs[processor.name] = signal # audio/control signal output
@@ -132,13 +116,13 @@ class Synthesizer(nn.Module):
         outputs[self.name] = outputs[output_name]
         
         return outputs[self.name], outputs
-    
+
     def uniform(self, batch_size, n_samples, device):
         """
         assumes parameters requiring external input is stationary (n_frames=1)
         """
         n_frames = 1
         param_tensor = torch.rand(batch_size, n_frames, self.ext_param_size).to(device)
-        dag_input = self.fill_params(param_tensor, scaling=True)
+        dag_input = self.fill_params(param_tensor)
         audio, outputs = self(dag_input, n_samples)
-        return param_tensor, audio
+        return audio, outputs

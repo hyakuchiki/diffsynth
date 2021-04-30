@@ -13,6 +13,15 @@ class ADSREnvelope(Processor):
         self.min_value = min_value
         self.max_value = max_value
         self.channels = channels
+        self.param_desc = {
+                'floor':        {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'}, 
+                'peak':         {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'}, 
+                'attack':       {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
+                'decay':        {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
+                'sus_level':    {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
+                'release':      {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
+                'note_off':     {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
+                }
 
     def forward(self, floor, peak, attack, decay, sus_level, release, note_off=0.8, n_frames=None):
         """generate envelopes from parameters
@@ -56,14 +65,3 @@ class ADSREnvelope(Processor):
         floor = floor * self.max_value + (1 - floor) * self.min_value
         signal = (A+D+S)*(peak - floor) + floor
         return torch.clamp(signal, min=self.min_value)
-
-    def get_param_desc(self):
-        return {
-                'floor':        {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'}, 
-                'peak':         {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'}, 
-                'attack':       {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
-                'decay':        {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
-                'sus_level':    {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
-                'release':      {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
-                'note_off':     {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
-                }

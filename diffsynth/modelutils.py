@@ -108,27 +108,27 @@ def construct_synths(name):
             (svf, {'audio': 'sawosc', 'g': 'SVF_G', 'twoR': 'SVF_R', 'mix': 'SVF_M'})
         ]
         fixed_params = {'BFRQ': torch.ones(1)*440, 'AMP': torch.ones(1)*0.8}
-    elif name == 'harmor':
+    elif name == 'harmor_fixed':
         harmor = Harmor(n_samples=16000, name='harmor', n_oscs=1)
         dag = [
-            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'})
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'DUMMY', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'})
         ]
         fixed_params = {'BFRQ': torch.ones(1)*440}
         static_params = ['M_OSC', 'Q_FILT']
     elif name == 'harmor_free':
         harmor = Harmor(n_samples=16000, name='harmor', n_oscs=1)
         dag = [
-            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'})
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'DUMMY', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'})
         ]
         fixed_params = {}
         static_params = ['M_OSC', 'Q_FILT', 'BFRQ']
     elif name == 'harmor_2oscfree':
-        harmor = Harmor(n_samples=16000, name='harmor', sep_amp=False, sep_f0s=True, n_oscs=2)
+        harmor = Harmor(n_samples=16000, name='harmor', sep_amp=False, n_oscs=2)
         dag = [
-            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'}),
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'MULT', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'}),
             ]
         fixed_params = {}
-        static_params=['BFRQ', 'M_OSC', 'Q_FILT']
+        static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT']
     synth = Synthesizer(dag, fixed_params=fixed_params, static_params=static_params)
 
     return synth

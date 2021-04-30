@@ -7,3 +7,4 @@ use_results/
 old/
 *.pyc
 runs/
+scripts/
