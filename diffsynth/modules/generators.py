@@ -128,8 +128,8 @@ class Wavetable(Gen):
         self.sample_rate = sample_rate
         self.len_waveform = len_waveform
         self.param_desc = {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
-                'wavetable':    {'size': self.len_waveform, 'range': (-1, 1), 'type': 'raw'}, 
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
+                'wavetable':    {'size': self.len_waveform, 'range': (-1, 1), 'type': 'sigmoid'}, 
                 'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
                 }
 
@@ -159,10 +159,10 @@ class SawOscillator(Gen):
         self.n_samples = n_samples
         self.sample_rate = sample_rate
         # saw waveform
-        waveform = torch.roll(torch.linspace(1.0, -1.0, 64), 32)
+        waveform = torch.roll(torch.linspace(1.0, -1.0, 64), 32) # aliasing?
         self.register_buffer('waveform', waveform)
         self.param_desc = {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
                 'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
                 }
     
@@ -191,8 +191,8 @@ class SineOscillator(Gen):
         self.n_samples = n_samples
         self.sample_rate = sample_rate
         self.param_desc = {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'exp_sigmoid'}, 
-                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
+                'frequencies':  {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
                 }
 
     def forward(self, amplitudes, frequencies, n_samples=None):

@@ -111,7 +111,7 @@ class ParamEstimatorSynth(EstimatorSynth):
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
             resyn_audio, outputs = self(data_dict)
             # Parameter loss
-            batch_loss = self.param_loss(outputs, params)
+            batch_loss = param_loss_w * self.param_loss(outputs, params)
             # Perform backward
             optimizer.zero_grad()
             batch_loss.backward()

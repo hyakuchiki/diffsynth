@@ -14,9 +14,9 @@ class FM2(Gen):
         self.sample_rate = sample_rate
         self.mod_ratio = np.log(max_mod_index+1)
         self.param_desc = {
-                'mod_amp':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'mod_amp':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
                 'mod_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                'car_amp':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'car_amp':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
                 'car_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
                 }
 
@@ -43,11 +43,11 @@ class FM3(Gen):
         # self.mod_ratio = np.log(max_mod_index+1)
         self.max_mod_index = max_mod_index
         self.param_desc = {
-                'amp_1':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'amp_1':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
                 'freq_1':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'},
-                'amp_2':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'amp_2':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
                 'freq_2':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
-                'amp_3':      {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
+                'amp_3':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
                 'freq_3':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
                 }
 
