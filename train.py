@@ -116,5 +116,5 @@ if __name__ == "__main__":
             model.eval()
             with torch.no_grad():
                 # save_batch(testbatch['audio'], resyn_audio, i+1, plot_dir, audio_dir)
-                resyn_audio, _est_params = model(testbatch)
+                resyn_audio, _output = model(testbatch)
                 save_to_board(i, writer, testbatch['audio'], resyn_audio, 8)
