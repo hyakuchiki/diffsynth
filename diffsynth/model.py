@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import diffsynth.util as util
-
-
+from diffsynth.spectral import compute_lsd
 
 class EstimatorSynth(nn.Module):
     """
@@ -77,6 +76,7 @@ class EstimatorSynth(nn.Module):
         sum_spec_loss = 0
         sum_wave_loss = 0
         sum_param_loss = 0
+        sum_lsd = 0
         with torch.no_grad():
             for data_dict in loader:
                 params = data_dict.pop('params')
@@ -86,6 +86,7 @@ class EstimatorSynth(nn.Module):
                 # Reconstruction loss
                 param_loss = self.param_loss(outputs, params)
                 # TODO: Use LSD or something instead of multiscale spec loss?
+                sum_lsd += compute_lsd(data_dict['audio'], resyn_audio).item()
                 spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
                 sum_spec_loss += spec_loss.detach().item()
                 sum_wave_loss += wave_loss.detach().item()
@@ -93,7 +94,8 @@ class EstimatorSynth(nn.Module):
         sum_spec_loss /= len(loader)
         sum_wave_loss /= len(loader)
         sum_param_loss /= len(loader)
-        return {'spec': sum_spec_loss, 'wave': sum_wave_loss, 'param': sum_param_loss}
+        sum_lsd /= len(loader)
+        return {'spec': sum_spec_loss, 'wave': sum_wave_loss, 'param': sum_param_loss, 'lsd': sum_lsd}
 
 class ParamEstimatorSynth(EstimatorSynth):
     """

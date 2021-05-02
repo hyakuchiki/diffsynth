@@ -107,7 +107,7 @@ class Normalize2d(nn.Module):
         if norm_type == 'instance':
             self.norm = nn.InstanceNorm2d(1)
         if norm_type == 'batch':
-            self.norm = nn.BatchNorm2d(1)
+            self.norm = nn.BatchNorm2d(1, affine=False)
 
     def forward(self, x):
         """
@@ -145,7 +145,7 @@ class CoordConv1D(nn.Module):
 class Resnet1D(nn.Module):
     """Resnet for encoder/decoder similar to Jukebox
     """
-    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, reverse_dilation=False):
+    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=3, reverse_dilation=False):
         """init
 
         Args:
@@ -179,7 +179,7 @@ class Resnet1D(nn.Module):
         return x
 
 class Resnet2D(nn.Module):
-    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=3):
+    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=3, reverse_dilation=False):
         """init
 
         Args:
@@ -201,6 +201,8 @@ class Resnet2D(nn.Module):
         conv_blocks = [conv_block(n_in, int(m_conv * n_in),
                                 dilation=dilation_growth_rate ** depth)
                                 for depth in range(n_depth)]
+        if reverse_dilation: # decoder should be flipped backwards
+            conv_blocks = conv_blocks[::-1]
         self.blocks = nn.ModuleList(conv_blocks)
 
     def forward(self, x):

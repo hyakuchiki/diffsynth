@@ -47,3 +47,14 @@ def save_to_board(i, writer, orig_audio, resyn_audio, plot_num=4, sr=16000):
         writer.add_audio('audio_resyn/{0}'.format(j), resyn_audio[j].unsqueeze(0), i, sample_rate=sr)
     fig = plot_recons(orig_audio.detach().cpu().numpy(), resyn_audio.detach().cpu().numpy(), '', sr=sr, num=plot_num, save=False)
     writer.add_figure('plot_recon', fig, i)
+
+def save_to_board_mel(i, writer, orig_mel, recon_mel, plot_num=8):
+    orig_mel = orig_mel.detach().cpu()
+    recon_mel = recon_mel.detach().cpu()
+
+    fig, axes = plt.subplots(2, plot_num, figsize=(30, 8))
+    for j in range(plot_num):
+        axes[0, j].imshow(orig_mel[j], aspect=0.25)
+        axes[1, j].imshow(recon_mel[j], aspect=0.25)
+    fig.tight_layout()
+    writer.add_figure('plot_recon', fig, i)

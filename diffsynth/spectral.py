@@ -86,6 +86,13 @@ def spectrogram(audio, size=2048, hop_length=1024, power=2, center=False, window
         spec = power_spec.sqrt()
     return spec
 
+def compute_lsd(orig_audio, resyn_audio):
+    orig_power_s = spectrogram(orig_audio).detach()
+    resyn_power_s = spectrogram(resyn_audio).detach()
+    lsd = torch.sqrt(torch.sum((10*torch.log10(orig_power_s/resyn_power_s + 1e-5))**2, dim=1))
+    lsd = lsd.mean()
+    return lsd
+
 def multiscale_fft(audio, sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=None, win_lengths=None) -> torch.Tensor:
     """multiscale fft power spectrogram
     uses torch.stft so it should be differentiable
