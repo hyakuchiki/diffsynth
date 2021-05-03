@@ -4,6 +4,7 @@ import diffsynth.util as util
 import math
 
 SCALE_FNS = {
+    'raw': lambda x, low, high: x,
     'sigmoid': lambda x, low, high: x*(high-low) + low,
     'freq_sigmoid': lambda x, low, high: util.unit_to_hz(x, low, high, clip=False),
     'exp_sigmoid': lambda x, low, high: util.exp_scale(x, math.log(10.0), high, 1e-7+low),
@@ -38,7 +39,7 @@ class Gen(Processor):
         super().__init__(name)
 
 class Add(Processor):
-    def __init__(self, name='add', n_samples=64000):
+    def __init__(self, name='add'):
         super().__init__(name=name)
         self.param_desc = {
             'signal_a': {'size':1, 'range': (-1, 1), 'type': 'raw'}, 'signal_b': {'size':1, 'range': (-1, 1), 'type': 'raw'}

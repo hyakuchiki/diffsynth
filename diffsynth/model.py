@@ -49,7 +49,7 @@ class EstimatorSynth(nn.Module):
         resyn_audio, outputs = self.synth(params_dict, audio_length)
         return resyn_audio, outputs
 
-    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w=0.0, clip=1.0):
+    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w=0.0, enc_w=0.0, ae_model=None, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
@@ -61,7 +61,11 @@ class EstimatorSynth(nn.Module):
             param_loss = self.param_loss(outputs, params)
             # Reconstruction loss
             spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-            batch_loss = spec_loss + wave_loss + param_loss_w * param_loss
+            if enc_w>0.0:
+                encoding_loss = enc_w*ae_model.encoding_loss(resyn_audio, data_dict['audio'])
+            else:
+                encoding_loss = 0
+            batch_loss = spec_loss + wave_loss + param_loss_w * param_loss + encoding_loss
             # Perform backward
             optimizer.zero_grad()
             batch_loss.backward()
@@ -71,12 +75,13 @@ class EstimatorSynth(nn.Module):
         sum_loss /= len(loader)
         return sum_loss
 
-    def eval_epoch(self, loader, recon_loss, device):
+    def eval_epoch(self, loader, recon_loss, device, ae_model=None):
         self.eval()
         sum_spec_loss = 0
         sum_wave_loss = 0
         sum_param_loss = 0
         sum_lsd = 0
+        sum_encoding_loss = 0
         with torch.no_grad():
             for data_dict in loader:
                 params = data_dict.pop('params')
@@ -91,11 +96,14 @@ class EstimatorSynth(nn.Module):
                 sum_spec_loss += spec_loss.detach().item()
                 sum_wave_loss += wave_loss.detach().item()
                 sum_param_loss += param_loss.detach().item()
+                if ae_model is not None:
+                    sum_encoding_loss += ae_model.encoding_loss(resyn_audio, data_dict['audio']).detach().item()
         sum_spec_loss /= len(loader)
         sum_wave_loss /= len(loader)
         sum_param_loss /= len(loader)
         sum_lsd /= len(loader)
-        return {'spec': sum_spec_loss, 'wave': sum_wave_loss, 'param': sum_param_loss, 'lsd': sum_lsd}
+        sum_encoding_loss /= len(loader)
+        return {'spec': sum_spec_loss, 'wave': sum_wave_loss, 'param': sum_param_loss, 'lsd': sum_lsd, 'enc': sum_encoding_loss}
 
 class ParamEstimatorSynth(EstimatorSynth):
     """
@@ -104,7 +112,7 @@ class ParamEstimatorSynth(EstimatorSynth):
     def __init__(self, estimator, synth):
         super().__init__(estimator, synth)
 
-    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, clip=1.0):
+    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, enc_w=0.0, ae_model=None, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:

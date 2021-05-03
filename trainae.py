@@ -1,4 +1,4 @@
-import os, glob, argparse
+import os, glob, argparse, json
 import tqdm
 import librosa
 import numpy as np
@@ -12,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from diffsynth.loss import SpecWaveLoss
 from trainutils import save_to_board, save_to_board_mel
+from train import BatchPTDataset
 from diffsynth.perceptual.ae import get_wave_ae
 from diffsynth.perceptual.melae import get_mel_ae, MelAE
 
@@ -37,6 +38,7 @@ if __name__ == "__main__":
     parser.add_argument('output_dir',   type=str,   help='')
     parser.add_argument('dataset',      type=str,   help='directory of dataset')
     # AE params
+    parser.add_argument('--data_type',    type=str,   default='wave',             help='')
     parser.add_argument('--latent_size',    type=int,   default=8,             help='')
     parser.add_argument('--encoder_dims',   type=int,   default=64,             help='')
     # wave encoder
@@ -69,9 +71,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     device = 'cuda'
-
-    # load nsynth dataset
-    dset = BasicWaveDataset(args.dataset, sample_rate=16000, length=1.024)
+    
+    # load waveform dataset
+    if args.data_type == 'wave':
+        dset = BasicWaveDataset(args.dataset, sample_rate=16000, length=1.024)
+    elif args.data_type == 'pt':
+        dset = BatchPTDataset(args.dataset, params=False)
     dset_l = len(dset)
     splits=[.8, .1, .1]
     split_sizes = [int(dset_l*splits[0]), int(dset_l*splits[1])]
@@ -93,6 +98,8 @@ if __name__ == "__main__":
     os.makedirs(model_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=args.output_dir, purge_step=0)
     writer.add_text('args', str(args.__dict__))
+    with open(os.path.join(args.output_dir, 'args.txt'), 'w') as f:
+        json.dump(args.__dict__, f, indent=4)
 
     if args.waveae:
         model = get_wave_ae(args.z_steps, args.encoder_dims, args.latent_size, args.res_depth, args.channels, args.dil_rate).to(device)
@@ -102,7 +109,7 @@ if __name__ == "__main__":
     # not used for mel
     recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=args.patience, verbose=True, threshold=1e-5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=args.patience, verbose=True, threshold=1e-7)
 
     best_loss = np.inf
     for i in tqdm.tqdm(range(args.epochs)):
@@ -118,13 +125,13 @@ if __name__ == "__main__":
 
         if valid_loss < best_loss:
             best_loss = valid_loss
-            torch.save(model, os.path.join(model_dir, 'state_dict.pth'))
+            torch.save(model.state_dict(), os.path.join(model_dir, 'state_dict.pth'))
 
         if (i+1)%args.plot_interval == 0:
             model.eval()
             with torch.no_grad():
                 if isinstance(model, MelAE):
-                    mel = model.get_transform(testbatch)
+                    mel = model.get_transform(testbatch['audio'])
                     recon_mel = model(mel)
                     save_to_board_mel(i, writer, mel, recon_mel, 8)
                 else:

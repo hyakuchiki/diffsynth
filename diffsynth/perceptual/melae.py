@@ -40,8 +40,8 @@ class MelAE(nn.Module):
             m.weight.data.uniform_(-0.01, 0.01)
             m.bias.data.fill_(0.01)
 
-    def get_transform(self, data_dict):
-        spec = self.logmel(data_dict['audio'])
+    def get_transform(self, audio):
+        spec = self.logmel(audio)
         if self.norm is not None:
             spec = self.norm(spec)
         # (batch, n_mels, time)
@@ -49,12 +49,24 @@ class MelAE(nn.Module):
         padded_spec = F.pad(spec, (0, self.spec_len_target-n_frames))
         return padded_spec
 
+    def encode_audio(self, audio):
+        mel = self.get_transform(audio)
+        encoder_output = self.encoder(mel)
+        z_tilde = self.map_latent(encoder_output)
+        return z_tilde
+
+    def encoding_loss(self, input_audio, target_audio):
+        batch_size = input_audio.shape[0]
+        audios = torch.cat([input_audio, target_audio], dim=0)
+        encodings = self.encode_audio(audios)
+        input_encoding = encodings[:batch_size]
+        target_encoding = encodings[batch_size:]
+        return F.l1_loss(input_encoding, target_encoding)
+
     def forward(self, mel):
         # Encode the inputs
         encoder_output = self.encoder(mel)
-        # regularization if vae
         z_tilde = self.map_latent(encoder_output)
-        # Decode the samples to get synthesis parameters
         recon_mel = self.decoder(z_tilde)
         return recon_mel
 
@@ -63,7 +75,7 @@ class MelAE(nn.Module):
         sum_loss = 0
         for data_dict in loader:
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-            mel = self.get_transform(data_dict)
+            mel = self.get_transform(data_dict['audio'])
             recon_mel = self(mel)
             # Reconstruction loss
             batch_loss = F.l1_loss(recon_mel, mel)
@@ -82,9 +94,9 @@ class MelAE(nn.Module):
         with torch.no_grad():
             for data_dict in loader:
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-                mel = self.get_transform(data_dict)
+                mel = self.get_transform(data_dict['audio'])
                 recon_mel = self(mel)
-                batch_loss = F.mse_loss(recon_mel, mel)
+                batch_loss = F.l1_loss(recon_mel, mel)
                 sum_loss += batch_loss.detach().item()
         sum_loss /= len(loader)
         return sum_loss
@@ -161,7 +173,7 @@ class MelDecoder(nn.Module):
 
 # recipe from flowsynth...
 class MelConvEncoder(nn.Module):
-    def __init__(self, in_size, encoder_dims, kernel=5, channels=32, n_layers = 5, hidden_size = 512, n_mlp = 2):
+    def __init__(self, in_size, encoder_dims, kernel=5, channels=32, n_layers = 5, hidden_size = 256, n_mlp = 2):
         super().__init__()
         size = in_size.copy()
         modules = nn.Sequential()
@@ -199,7 +211,7 @@ class MelConvEncoder(nn.Module):
         return out
 
 class MelConvDecoder(nn.Module):
-    def __init__(self, latent_size, enc_final_size, out_size, kernel=5, channels = 32, n_layers = 5, hidden_size = 512, n_mlp = 2):
+    def __init__(self, latent_size, enc_final_size, out_size, kernel=5, channels = 32, n_layers = 5, hidden_size = 256, n_mlp = 2):
         super().__init__()
         # Create modules
         self.enc_final_size = enc_final_size

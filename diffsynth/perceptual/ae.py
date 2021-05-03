@@ -134,6 +134,19 @@ class AE(nn.Module):
         resyn_audio = self.decoder(z_tilde)
         return resyn_audio
 
+    def encode_audio(self, audio):
+        encoder_output = self.encoder(audio)
+        z_tilde = self.map_latent(encoder_output)
+        return z_tilde
+
+    def encoding_loss(self, input_audio, target_audio):
+        batch_size = input_audio.shape[0]
+        audios = torch.cat([input_audio, target_audio], dim=0)
+        encodings = self.encode_audio(audios)
+        input_encoding = encodings[:batch_size]
+        target_encoding = encodings[batch_size:]
+        return F.l1_loss(input_encoding, target_encoding)
+
     def train_epoch(self, loader, recon_loss, optimizer, device, clip=1.0):
         self.train()
         sum_loss = 0

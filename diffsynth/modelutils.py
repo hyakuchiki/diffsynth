@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from diffsynth.modules.generators import SineOscillator, SawOscillator
+from diffsynth.processor import Add
 from diffsynth.modules.fm import FM2, FM3
 from diffsynth.modules.envelope import ADSREnvelope
 from diffsynth.synthesizer import Synthesizer
@@ -29,6 +30,17 @@ def construct_synths(name):
             (fmosc, {'amp_1': 'AMP_1', 'amp_2': 'AMP_2', 'amp_3': 'AMP_3', 'freq_1': 'FRQ_1', 'freq_2': 'FRQ_2', 'freq_3': 'FRQ_3'})
         ]
         static_params=['FRQ_1', 'FRQ_2', 'FRQ_3']
+        fixed_params = {}
+    elif name == 'fm6_free':
+        fm3_1 = FM3(n_samples=16000, name='fm3_1')
+        fm3_2 = FM3(n_samples=16000, name='fm3_2')
+        add = Add(name='add')
+        dag = [
+            (fm3_1, {'amp_1': 'AMP_1', 'amp_2': 'AMP_2', 'amp_3': 'AMP_3', 'freq_1': 'FRQ_1', 'freq_2': 'FRQ_2', 'freq_3': 'FRQ_3'}),
+            (fm3_2, {'amp_1': 'AMP_4', 'amp_2': 'AMP_5', 'amp_3': 'AMP_6', 'freq_1': 'FRQ_4', 'freq_2': 'FRQ_5', 'freq_3': 'FRQ_6'}),
+            (add, {'signal_a': 'fm3_1', 'signal_b': 'fm3_2'})
+        ]
+        static_params=['FRQ_1', 'FRQ_2', 'FRQ_3', 'FRQ_4', 'FRQ_5', 'FRQ_6']
         fixed_params = {}
     elif name == 'sin':
         sin = SineOscillator(n_samples=16000, name='sin')
