@@ -76,11 +76,14 @@ class Synthesizer(nn.Module):
             curr_idx += param_size
         # Fill fixed_params
         for param_name in self.fixed_param_names:
-            param_value = getattr(self, param_name)
+            param_value = getattr(self, param_name)                
             if param_value is None:
                 value = conditioning[param_name] 
             elif len(param_value.shape) == 1:
-                value = param_value[None, None, :].expand(batch_size, n_frames, -1).to(device)
+                if param_name in self.static_params:
+                    value = param_value[None, None, :].expand(batch_size, -1, -1).to(device)
+                else:
+                    value = param_value[None, None, :].expand(batch_size, n_frames, -1).to(device)
             elif len(param_value.shape) == 2:
                 value = param_value[None, :, :].expand(batch_size, -1, -1).to(device)
             dag_input[param_name] = value

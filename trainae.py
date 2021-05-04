@@ -102,7 +102,7 @@ if __name__ == "__main__":
         json.dump(args.__dict__, f, indent=4)
 
     if args.waveae:
-        model = get_wave_ae(args.z_steps, args.encoder_dims, args.latent_size, args.res_depth, args.channels, args.dil_rate).to(device)
+        model = get_wave_ae(args.z_steps, args.encoder_dims, args.latent_size, args.res_depth, args.channels, args.dil_rate, testbatch['audio'].shape[-1]).to(device)
     else:
         model = get_mel_ae(args.encoder_dims, args.latent_size, testbatch['audio'].shape[-1]).to(device)
     

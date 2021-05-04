@@ -17,6 +17,7 @@ def construct_synths(name):
             (fmosc, {'mod_amp': 'envm', 'car_amp': 'envc', 'mod_freq': 'FRQ_M', 'car_freq': 'FRQ_C'})
         ]
         fixed_params = {'FRQ_M': torch.ones(1)*440, 'FRQ_C': torch.ones(1)*440}
+        static_params=['FRQ_M', 'FRQ_C']
     elif name == 'fm2_free':
         fmosc = FM2(n_samples=16000, name='fm2')
         dag = [
@@ -24,6 +25,17 @@ def construct_synths(name):
         ]
         static_params=['FRQ_M', 'FRQ_C']
         fixed_params = {}
+    elif name == 'fm2_free_env':
+        fmosc = FM2(n_samples=16000, name='fm2')
+        envm = ADSREnvelope(name='envm')
+        envc = ADSREnvelope(name='envc')
+        dag = [
+            (envm, {'floor': 'AMP_FLOOR', 'peak': 'PEAK_M', 'attack': 'AT_M', 'decay': 'DE_M', 'sus_level': 'SU_M', 'release': 'RE_M', 'note_off': 'NO'}),
+            (envc, {'floor': 'AMP_FLOOR', 'peak': 'PEAK_C', 'attack': 'AT_C', 'decay': 'DE_C', 'sus_level': 'SU_C', 'release': 'RE_C', 'note_off': 'NO'}),
+            (fmosc, {'mod_amp': 'envm', 'car_amp': 'envc', 'mod_freq': 'FRQ_M', 'car_freq': 'FRQ_C'})
+        ]
+        fixed_params = {'AMP_FLOOR':torch.zeros(1), 'NO': torch.ones(1)*0.8}
+        static_params=['FRQ_M', 'FRQ_C', 'PEAK_M', 'AT_M', 'DE_M', 'SU_M', 'RE_M', 'PEAK_C', 'AT_C', 'DE_C', 'SU_C', 'RE_C', 'AMP_FLOOR', 'NO']
     elif name == 'fm3_free':
         fmosc = FM3(n_samples=16000, name='fm3')
         dag = [

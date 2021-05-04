@@ -81,6 +81,8 @@ if __name__ == "__main__":
 
     writer = SummaryWriter(log_dir=args.output_dir, purge_step=0)
     writer.add_text('args', str(args.__dict__))
+    with open(os.path.join(args.output_dir, 'args.txt'), 'w') as f:
+        json.dump(args.__dict__, f, indent=4)
 
     dset = BatchPTDataset(args.dataset)
     dset_len = len(dset)
@@ -139,7 +141,7 @@ if __name__ == "__main__":
             writer.add_scalar('valid/'+k, valid_losses[k], i)
         if valid_losses['spec'] < best_loss:
             best_loss = valid_losses['spec']
-            torch.save(model.state_dict, os.path.join(model_dir, 'state_dict.pth'))
+            torch.save(model.state_dict(), os.path.join(model_dir, 'state_dict.pth'))
         if (i + 1) % 10 == 0:
             # plot spectrograms
             model.eval()

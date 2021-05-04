@@ -89,7 +89,7 @@ def spectrogram(audio, size=2048, hop_length=1024, power=2, center=False, window
 def compute_lsd(orig_audio, resyn_audio):
     orig_power_s = spectrogram(orig_audio).detach()
     resyn_power_s = spectrogram(resyn_audio).detach()
-    lsd = torch.sqrt(torch.sum((10*torch.log10(orig_power_s/resyn_power_s + 1e-5))**2, dim=1))
+    lsd = torch.sqrt(((10 * (torch.log10(resyn_power_s+1e-5)-torch.log10(orig_power_s+1e-5)))**2).sum()) / orig_power_s.shape[-1]
     lsd = lsd.mean()
     return lsd
 

@@ -6,15 +6,18 @@ from diffsynth.layers import Resnet1D, MLP
 
 frame_setting_stride = {
     # n_downsample, stride
+    "rough": (6, 4), # hop: 2048
     "coarse": (5, 4), # hop: 1024
     "fine": (9, 2), # 512, too deep?
     "finer": (4, 4), # 256
     "finest": (6, 2) # 64
 }
 
-def get_wave_ae(z_steps, encoder_dims, latent_size, res_depth, channels, dil_rate):
+def get_wave_ae(z_steps, encoder_dims, latent_size, res_depth, channels, dil_rate, n_samples=None):
     encoder = DilatedConvEncoder(z_steps, encoder_dims, res_depth, channels, dil_rate)
     decoder = DilatedConvDecoder(z_steps, latent_size, res_depth, channels, dil_rate)
+    # encoder = RNNDilatedConvEncoder(z_steps, encoder_dims, n_samples, res_depth, channels, dil_rate)
+    # decoder = RNNDilatedConvDecoder(z_steps, latent_size, n_samples, res_depth, channels, dil_rate)
     model = AE(encoder, decoder, encoder_dims, latent_size)
     return model
 
@@ -100,10 +103,81 @@ class DilatedConvDecoder(nn.Module):
         self.model = nn.Sequential(*blocks)
 
     def forward(self, z):
-        """doesnt use transforms
-        """
         # batch, n_frames, latent_dims
         z = z.permute(0, 2, 1)
+        resyn_audio = self.model(z) # (batch, 1, n_samples)
+        resyn_audio = resyn_audio.squeeze(1)
+        return resyn_audio
+
+class OneDilatedConvEncoder(DilatedConvEncoder):
+    # Many-to-one
+    def __init__(self, frame_setting, encoder_dims, n_samples, res_depth=4, channels=32, dilation_growth_rate=3, m_conv=1.0):
+        super().__init__(frame_setting, encoder_dims//4, res_depth, channels, dilation_growth_rate, m_conv)
+        self.n_frames = n_samples // (self.stride ** self.n_downsample)
+        print('n_frames: %i'%(self.n_frames))
+        self.mlp = MLP(self.n_frames*(encoder_dims//4), encoder_dims)
+
+    def forward(self, x):
+        """
+        x: raw audio
+        """
+        batch_size, n_samples = x.shape
+        x = x.unsqueeze(1)
+        out = self.model(x) # (batch, encoder_dims//4, n_frames)
+        out = out.flatten(1,2)
+        out = self.mlp(out)
+        return out
+
+class OneDilatedConvDecoder(DilatedConvDecoder):
+    # Many-to-one
+    def __init__(self, frame_setting, latent_dims, n_samples, res_depth=4, channels=32, dilation_growth_rate=3, m_conv=1.0):
+        super().__init__(frame_setting, latent_dims//4, res_depth, channels, dilation_growth_rate, m_conv)
+        self.n_frames = n_samples // (self.stride ** self.n_downsample)
+        # l -> l//4 * n_frames
+        self.mlp = MLP(latent_dims, self.n_frames*(self.latent_dims))
+    
+    def forward(self, z):
+        # batch, latent_dims
+        z = self.mlp(z)
+        z = z.view(-1, self.latent_dims, self.n_frames)
+        resyn_audio = self.model(z) # (batch, 1, n_samples)
+        resyn_audio = resyn_audio.squeeze(1)
+        return resyn_audio
+
+class RNNDilatedConvEncoder(DilatedConvEncoder):
+    # Many-to-one
+    def __init__(self, frame_setting, encoder_dims, n_samples, res_depth=4, channels=32, dilation_growth_rate=3, m_conv=1.0):
+        super().__init__(frame_setting, encoder_dims, res_depth, channels, dilation_growth_rate, m_conv)
+        self.n_frames = n_samples // (self.stride ** self.n_downsample)
+        print('n_frames: %i'%(self.n_frames))
+        self.gru = nn.GRU(encoder_dims, encoder_dims, batch_first=True)
+
+    def forward(self, x):
+        """
+        x: raw audio
+        """
+        batch_size, n_samples = x.shape
+        x = x.unsqueeze(1)
+        x = self.model(x) # (batch, encoder_dims, n_frames)
+        x = x.permute(0, 2, 1)
+        out, h_0 = self.gru(x)
+        return out[:, -1]
+
+class RNNDilatedConvDecoder(DilatedConvDecoder):
+    # Many-to-one
+    def __init__(self, frame_setting, latent_dims, n_samples, res_depth=4, channels=32, dilation_growth_rate=3, m_conv=1.0):
+        super().__init__(frame_setting, latent_dims, res_depth, channels, dilation_growth_rate, m_conv)
+        self.n_frames = n_samples // (self.stride ** self.n_downsample)
+        self.gru = nn.GRUCell(latent_dims, latent_dims)
+    
+    def forward(self, z):
+        # z
+        h = torch.zeros_like(z)
+        hs = []
+        for i in range(self.n_frames):
+            h = self.gru(z, h)
+            hs.append(h)
+        z = torch.stack(hs, dim=-1) # batch, latent_dims(C), n_frames
         resyn_audio = self.model(z) # (batch, 1, n_samples)
         resyn_audio = resyn_audio.squeeze(1)
         return resyn_audio
