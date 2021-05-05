@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from diffsynth.processor import Gen
+from diffsynth.processor import Gen, FREQ_RANGE
 import diffsynth.util as util
 import numpy as np
 from diffsynth.util import midi_to_hz
@@ -18,7 +18,7 @@ class Additive(Gen):
         self.param_desc = {
                 'amplitudes':               {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
                 'harmonic_distribution':    {'size': self.n_harmonics, 'range': (0, 1), 'type': 'exp_sigmoid'}, 
-                'f0_hz':                    {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
+                'f0_hz':                    {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}
                 }
 
     def forward(self, amplitudes, harmonic_distribution, f0_hz, n_samples=None):
@@ -57,7 +57,7 @@ class Sinusoids(Gen):
         self.n_sinusoids = n_sinusoids
         self.param_desc = {
                 'amplitudes':   {'size': self.n_sinusoids, 'range': (0, 2), 'type': 'exp_sigmoid'},
-                'frequencies':  {'size': self.n_sinusoids, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'frequencies':  {'size': self.n_sinusoids, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}, 
                 }
 
     def forward(self, amplitudes, frequencies, n_samples=None):
@@ -130,7 +130,7 @@ class Wavetable(Gen):
         self.param_desc = {
                 'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
                 'wavetable':    {'size': self.len_waveform, 'range': (-1, 1), 'type': 'sigmoid'}, 
-                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'f0_hz':        {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}, 
                 }
 
     def forward(self, amplitudes, wavetable, f0_hz, n_samples=None):
@@ -163,7 +163,7 @@ class SawOscillator(Gen):
         self.register_buffer('waveform', waveform)
         self.param_desc = {
                 'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
-                'f0_hz':        {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'f0_hz':        {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}, 
                 }
     
     def forward(self, amplitudes, f0_hz, n_samples=None):
@@ -192,7 +192,7 @@ class SineOscillator(Gen):
         self.sample_rate = sample_rate
         self.param_desc = {
                 'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
-                'frequencies':  {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'frequencies':  {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}, 
                 }
 
     def forward(self, amplitudes, frequencies, n_samples=None):

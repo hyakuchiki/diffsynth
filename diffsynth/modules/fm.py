@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from diffsynth.processor import Gen
+from diffsynth.processor import Gen, FREQ_RANGE
 import diffsynth.util as util
 import numpy as np
 
@@ -15,9 +15,9 @@ class FM2(Gen):
         self.mod_ratio = np.log(max_mod_index+1)
         self.param_desc = {
                 'mod_amp':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
-                'mod_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'mod_freq':     {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}, 
                 'car_amp':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
-                'car_freq':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
+                'car_freq':     {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}
                 }
 
     def forward(self, mod_amp, mod_freq, car_amp, car_freq, n_samples=None):
@@ -44,11 +44,11 @@ class FM3(Gen):
         self.max_mod_index = max_mod_index
         self.param_desc = {
                 'amp_1':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
-                'freq_1':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'},
+                'freq_1':     {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'},
                 'amp_2':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
-                'freq_2':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}, 
+                'freq_2':     {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}, 
                 'amp_3':      {'size': 1, 'range': (0, 1), 'type': 'sigmoid'},
-                'freq_3':     {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'}
+                'freq_3':     {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'}
                 }
 
     def forward(self, amp_1, freq_1, amp_2, freq_2, amp_3, freq_3, n_samples=None):

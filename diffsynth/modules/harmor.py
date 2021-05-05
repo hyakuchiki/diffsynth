@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from diffsynth.processor import Gen
+from diffsynth.processor import Gen, FREQ_RANGE
 import diffsynth.util as util
 import numpy as np
 
@@ -39,7 +39,7 @@ class Harmor(Gen):
         self.param_desc = {
             'amplitudes':       {'size': n_amps, 'range': (0, 1),    'type': 'sigmoid'},
             'osc_mix':          {'size': self.n_oscs, 'range': (0, 1),    'type': 'sigmoid'}, 
-            'f0_hz':            {'size': 1, 'range': (32.7, 2093), 'type': 'freq_sigmoid'},
+            'f0_hz':            {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'},
             'f0_mult':          {'size': self.n_oscs-1, 'range': (1, 8), 'type': 'sigmoid'},
             'cutoff':           {'size': 1, 'range': (30.0, self.sample_rate/2), 'type': 'freq_sigmoid'},
             'q':                {'size': 1, 'range': (0.0, 2.0), 'type': 'sigmoid'}

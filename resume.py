@@ -7,7 +7,7 @@ from torch.utils.data import Subset, DataLoader, Dataset, ConcatDataset, random_
 from torch.utils.tensorboard import SummaryWriter
 
 from diffsynth.estimator import MFCCEstimator, MelEstimator
-from diffsynth.model import NoParamEstimatorSynth
+from diffsynth.model import NoParamEstimatorSynth, EstimatorSynth
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
@@ -19,12 +19,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('output_dir', type=str,   help='')
     parser.add_argument('load_dir',   type=str,   help='')
-    parser.add_argument('dataset',      type=str,   help='directory of dataset')
 
-    parser.add_argument('--subset',     type=int,   default=None,           help='')
-    parser.add_argument('--epochs',     type=int,   default=400,    help='directory of dataset')
-    parser.add_argument('--batch_size', type=int,   default=128,     help='directory of dataset')
-    parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
+    parser.add_argument('--train_data', type=str,   default='real', help='synth, real, or mix')
+
+    parser.add_argument('--epochs',     type=int,   default=400,    help='')
+    parser.add_argument('--batch_size', type=int,   default=64,     help='')
+    parser.add_argument('--lr',         type=float, default=1e-3,   help='')
 
     parser.add_argument('--fft_sizes',        type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
     parser.add_argument('--hop_lengths',      type=int,   default=None, nargs='*', help='')
@@ -35,6 +35,8 @@ if __name__ == "__main__":
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
+    
+    parser.add_argument('--p_w',            type=float, default=0.0,            help='')
 
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
@@ -43,6 +45,9 @@ if __name__ == "__main__":
     parser.add_argument('--plot_interval',  type=int,   default=10,             help='')
     parser.add_argument('--nbworkers',      type=int,   default=4,              help='')
     args = parser.parse_args()
+
+    torch.manual_seed(0)
+    np.random.seed(seed=0) # subset
 
     device = 'cuda'
 
@@ -59,30 +64,48 @@ if __name__ == "__main__":
     with open(pre_args_file) as f:
         pre_args = json.load(f)
         pre_args = SimpleNamespace(**pre_args)
+    
+    # load dataloaders
+    datasets_file = os.path.join(args.load_dir, 'datasets.pt')
 
-    # load OoD data
-    dset = BasicWaveDataset(args.dataset, sample_rate=16000, length=1.024)
-    dset_l = len(dset)
-    splits=[.8, .1, .1]
-    split_sizes = [int(dset_l*splits[0]), int(dset_l*splits[1])]
-    split_sizes.append(dset_l - split_sizes[0] - split_sizes[1])
-    dset_train, dset_valid, dset_test = random_split(dset, lengths=split_sizes, generator=torch.Generator().manual_seed(0))
-    if args.subset is not None:
-        indices = np.random.choice(len(dset_train), args.subset, replace=False)
-        dset_train = Subset(dset_train, indices)
-    
-    dl_train = DataLoader(dset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.nbworkers, pin_memory=True)
-    dl_valid = DataLoader(dset_valid, batch_size=args.batch_size, num_workers=args.nbworkers, pin_memory=True)
-    dl_test = DataLoader(dset_test, batch_size=args.batch_size, num_workers=args.nbworkers, pin_memory=True)
-    testbatch = next(iter(dl_test))
-    testbatch = {name:tensor.to(device) for name, tensor in testbatch.items()}
-    
+    syn_dset_train, syn_dset_valid, syn_dset_test, real_dset_train, real_dset_valid, real_dset_test = torch.load(datasets_file)
+    assert len(syn_dset_train) == len(real_dset_train)
+
+    if args.train_data == 'real':
+        train_loader = DataLoader(real_dset_train, shuffle=True, batch_size=args.batch_size, num_workers=4)
+    elif args.train_data == 'synth':
+        train_loader = DataLoader(syn_dset_train, shuffle=True, batch_size=args.batch_size, num_workers=4)
+    elif args.train_data == 'mix':
+        indices = np.random.choice(len(syn_dset_train)+len(real_dset_train), len(syn_dset_train), replace=False)
+        # Mix each roughly evenly
+        train_dset = Subset(ConcatDataset([syn_dset_train, real_dset_train]), indices)
+        train_loader = DataLoader(train_dset, shuffle=True, batch_size=args.batch_size, num_workers=4)
+
+    syn_valid_loader = DataLoader(syn_dset_valid, batch_size=args.batch_size, num_workers=4)
+    syn_test_loader = DataLoader(syn_dset_test, batch_size=args.batch_size, num_workers=4)
+
+    real_valid_loader = DataLoader(real_dset_valid, batch_size=args.batch_size, num_workers=4)
+    real_test_loader = DataLoader(real_dset_test, batch_size=args.batch_size, num_workers=4)
+
+    syn_testbatch = next(iter(syn_valid_loader))
+    syn_testbatch.pop('params')
+    syn_testbatch = {name:tensor.to(device) for name, tensor in syn_testbatch.items()}
+
+    real_testbatch = next(iter(real_valid_loader))
+    real_testbatch = {name:tensor.to(device) for name, tensor in real_testbatch.items()}
+
     synth = construct_synths(pre_args.synth)
     if pre_args.estimator == 'mfccgru':
-        estimator = MFCCEstimator(synth.ext_param_size, noise_prob=pre_args.noise_prob, noise_mag=pre_args.noise_mag).to(device)
+        estimator = MFCCEstimator(synth.ext_param_size, noise_prob=pre_args.noise_prob, noise_mag=pre_args.noise_mag)
     elif pre_args.estimator == 'melgru':
-        estimator = MelEstimator(synth.ext_param_size, noise_prob=pre_args.noise_prob, noise_mag=pre_args.noise_mag).to(device)
-    model = NoParamEstimatorSynth(estimator, synth)
+        estimator = MelEstimator(synth.ext_param_size, noise_prob=pre_args.noise_prob, noise_mag=pre_args.noise_mag)
+    
+    if args.p_w > 0:
+        assert args.train_data == 'synth'
+        model = EstimatorSynth(estimator, synth)
+    else:
+        model = NoParamEstimatorSynth(estimator, synth)
+
     model.load_state_dict(torch.load(os.path.join(args.load_dir, 'model/state_dict.pth')))
     model = model.to(device)
 
@@ -90,28 +113,34 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=args.patience, verbose=True, threshold=1e-5)
 
-
+    # initial state (epoch=0)
     with torch.no_grad():
-        # save_batch(testbatch['audio'], resyn_audio, i+1, plot_dir, audio_dir)
-        resyn_audio, _output = model(testbatch)
-        save_to_board(0, writer, testbatch['audio'], resyn_audio, 8)
+        resyn_audio, _output = model(syn_testbatch)
+        save_to_board(0, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
+        resyn_audio, _output = model(real_testbatch)
+        save_to_board(0, 'real', writer, real_testbatch['audio'], resyn_audio, 8)
+        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device)
+        writer.add_scalar('lr', optimizer.param_groups[0]['lr'], 0)
+        for k in valid_losses:
+            writer.add_scalar('valid/'+k, valid_losses[k], 0)
 
     best_loss = np.inf
     for i in tqdm.tqdm(range(1, args.epochs+1)):
-        train_loss = model.train_epoch(loader=dl_train, recon_loss=recon_loss, optimizer=optimizer, device=device, param_loss_w=0.0)
-        valid_losses = model.eval_epoch(loader=dl_valid, recon_loss=recon_loss, device=device)
-        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses['spec']))
+        train_loss = model.train_epoch(loader=train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, param_loss_w=args.p_w, enc_w=args.enc_w)
+        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device)
+        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses['real/lsd']))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
         writer.add_scalar('train/loss', train_loss, i)
         for k in valid_losses:
             writer.add_scalar('valid/'+k, valid_losses[k], i)
-        if valid_losses['spec'] < best_loss:
-            best_loss = valid_losses['spec']
+        if valid_losses['real/lsd'] < best_loss:
+            best_loss = valid_losses['real/lsd']
             torch.save(model.state_dict, os.path.join(model_dir, 'state_dict.pth'))
-        if (i + 1) % args.plot_interval == 0:
+        if i % args.plot_interval == 0:
             # plot spectrograms
             model.eval()
             with torch.no_grad():
-                # save_batch(testbatch['audio'], resyn_audio, i+1, plot_dir, audio_dir)
-                resyn_audio, _output = model(testbatch)
-                save_to_board(i, writer, testbatch['audio'], resyn_audio, 8)
+                resyn_audio, _output = model(syn_testbatch)
+                save_to_board(i, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
+                resyn_audio, _output = model(real_testbatch)
+                save_to_board(i, 'real', writer, real_testbatch['audio'], resyn_audio, 8)

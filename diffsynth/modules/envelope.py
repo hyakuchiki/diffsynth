@@ -20,10 +20,11 @@ class ADSREnvelope(Processor):
                 'decay':        {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
                 'sus_level':    {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
                 'release':      {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
+                'noise_mag':    {'size':self.channels, 'range': (0, 0.1), 'type': 'sigmoid'},
                 'note_off':     {'size':self.channels, 'range': (0, 1), 'type': 'sigmoid'},
                 }
 
-    def forward(self, floor, peak, attack, decay, sus_level, release, note_off=0.8, n_frames=None):
+    def forward(self, floor, peak, attack, decay, sus_level, release, noise_mag=0.0, note_off=0.8, n_frames=None):
         """generate envelopes from parameters
 
         Args:
@@ -63,5 +64,5 @@ class ADSREnvelope(Processor):
         S = soft_clamp_min(S, -sus_level)
         peak = peak * self.max_value + (1 - peak) * self.min_value
         floor = floor * self.max_value + (1 - floor) * self.min_value
-        signal = (A+D+S)*(peak - floor) + floor
-        return torch.clamp(signal, min=self.min_value)
+        signal = (A + D + S + torch.randn_like(A)*noise_mag)*(peak - floor) + floor
+        return torch.clamp(signal, min=self.min_value, max=self.max_value)

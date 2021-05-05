@@ -39,14 +39,15 @@ def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, s
     else:
         return fig
 
-def save_to_board(i, writer, orig_audio, resyn_audio, plot_num=4, sr=16000):
+def save_to_board(i, name, writer, orig_audio, resyn_audio, plot_num=4, sr=16000):
     orig_audio = orig_audio.detach().cpu()
     resyn_audio = resyn_audio.detach().cpu()
     for j in range(plot_num):
-        writer.add_audio('audio_orig/{0}'.format(j), orig_audio[j].unsqueeze(0), i, sample_rate=sr)
-        writer.add_audio('audio_resyn/{0}'.format(j), resyn_audio[j].unsqueeze(0), i, sample_rate=sr)
+        if i == 0:
+            writer.add_audio('{0}_orig/{1}'.format(name, j), orig_audio[j].unsqueeze(0), i, sample_rate=sr)
+        writer.add_audio('{0}_resyn/{1}'.format(name, j), resyn_audio[j].unsqueeze(0), i, sample_rate=sr)
     fig = plot_recons(orig_audio.detach().cpu().numpy(), resyn_audio.detach().cpu().numpy(), '', sr=sr, num=plot_num, save=False)
-    writer.add_figure('plot_recon', fig, i)
+    writer.add_figure('plot_recon_{0}'.format(name), fig, i)
 
 def save_to_board_mel(i, writer, orig_mel, recon_mel, plot_num=8):
     orig_mel = orig_mel.detach().cpu()

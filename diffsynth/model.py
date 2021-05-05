@@ -75,39 +75,63 @@ class EstimatorSynth(nn.Module):
         sum_loss /= len(loader)
         return sum_loss
 
-    def eval_epoch(self, loader, recon_loss, device, ae_model=None):
+    def eval_epoch(self, syn_loader, real_loader, recon_loss, device, ae_model=None):
         self.eval()
-        sum_spec_loss = 0
-        sum_wave_loss = 0
-        sum_param_loss = 0
-        sum_lsd = 0
-        sum_encoding_loss = 0
+        sum_syn_spec_loss = 0
+        sum_syn_param_loss = 0
+        sum_syn_lsd = 0
+        sum_syn_encoding_loss = 0
         with torch.no_grad():
-            for data_dict in loader:
+            for data_dict in syn_loader:
                 params = data_dict.pop('params')
                 params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
                 resyn_audio, outputs = self(data_dict)
                 # Reconstruction loss
                 param_loss = self.param_loss(outputs, params)
-                # TODO: Use LSD or something instead of multiscale spec loss?
-                sum_lsd += compute_lsd(data_dict['audio'], resyn_audio).item()
                 spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-                sum_spec_loss += spec_loss.detach().item()
-                sum_wave_loss += wave_loss.detach().item()
-                sum_param_loss += param_loss.detach().item()
+                sum_syn_spec_loss += spec_loss.detach().item()
+                sum_syn_lsd += compute_lsd(data_dict['audio'], resyn_audio).item()
+                sum_syn_param_loss += param_loss.detach().item()
                 if ae_model is not None:
-                    sum_encoding_loss += ae_model.encoding_loss(resyn_audio, data_dict['audio']).detach().item()
-        sum_spec_loss /= len(loader)
-        sum_wave_loss /= len(loader)
-        sum_param_loss /= len(loader)
-        sum_lsd /= len(loader)
-        sum_encoding_loss /= len(loader)
-        return {'spec': sum_spec_loss, 'wave': sum_wave_loss, 'param': sum_param_loss, 'lsd': sum_lsd, 'enc': sum_encoding_loss}
+                    sum_syn_encoding_loss += ae_model.encoding_loss(resyn_audio, data_dict['audio']).detach().item()
+        sum_syn_spec_loss /= len(syn_loader)
+        sum_syn_param_loss /= len(syn_loader)
+        sum_syn_lsd /= len(syn_loader)
+        sum_syn_encoding_loss /= len(syn_loader)
 
+        sum_real_spec_loss = 0
+        sum_real_lsd = 0
+        sum_real_encoding_loss = 0
+        with torch.no_grad():
+            for data_dict in real_loader:
+                data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
+                resyn_audio, outputs = self(data_dict)
+                # Reconstruction loss
+                spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
+                sum_real_spec_loss += spec_loss.detach().item()
+                sum_real_lsd += compute_lsd(data_dict['audio'], resyn_audio).item()
+                if ae_model is not None:
+                    sum_real_encoding_loss += ae_model.encoding_loss(resyn_audio, data_dict['audio']).detach().item()
+
+        sum_real_spec_loss /= len(real_loader)
+        sum_real_lsd /= len(real_loader)
+        sum_real_encoding_loss /= len(real_loader)
+        result = {  'syn/spec': sum_syn_spec_loss,
+                    'syn/param': sum_syn_param_loss, 
+                    'syn/lsd': sum_syn_lsd, 
+                    'syn/enc': sum_syn_encoding_loss,
+                    'real/spec': sum_real_spec_loss,
+                    'real/lsd': sum_real_lsd, 
+                    'real/enc': sum_real_encoding_loss,                    
+                    }
+        return result
+
+# not used anymore
 class ParamEstimatorSynth(EstimatorSynth):
     """
     audio -> Estimator trained on parameter loss -> Synth -> audio
+    bypasses synthesizer (or not i guess) while training
     """
     def __init__(self, estimator, synth):
         super().__init__(estimator, synth)
@@ -134,6 +158,7 @@ class ParamEstimatorSynth(EstimatorSynth):
 class NoParamEstimatorSynth(EstimatorSynth):
     """
     Ignore params
+    Training set has no params and is trained by spectral loss only
     """
     def __init__(self, estimator, synth):
         super().__init__(estimator, synth)
@@ -157,25 +182,3 @@ class NoParamEstimatorSynth(EstimatorSynth):
             sum_loss += batch_loss.detach().item()
         sum_loss /= len(loader)
         return sum_loss
-    
-    def eval_epoch(self, loader, recon_loss, device):
-        self.eval()
-        sum_spec_loss = 0
-        sum_wave_loss = 0
-        sum_lsd = 0
-        with torch.no_grad():
-            for data_dict in loader:
-                if 'params' in data_dict:
-                    params = data_dict.pop('params')
-                data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-                resyn_audio, est_param = self(data_dict)
-                # Reconstruction loss
-                # TODO: Use LSD or something instead of multiscale spec loss?
-                spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-                sum_lsd += compute_lsd(data_dict['audio'], resyn_audio).item()
-                sum_spec_loss += spec_loss.detach().item()
-                sum_wave_loss += wave_loss.detach().item()
-        sum_spec_loss /= len(loader)
-        sum_wave_loss /= len(loader)
-        sum_lsd /= len(loader)
-        return {'spec': sum_spec_loss, 'wave': sum_wave_loss, 'lsd': sum_lsd}
