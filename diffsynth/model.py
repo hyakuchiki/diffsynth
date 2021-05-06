@@ -49,7 +49,7 @@ class EstimatorSynth(nn.Module):
         resyn_audio, outputs = self.synth(params_dict, audio_length)
         return resyn_audio, outputs
 
-    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w=0.0, enc_w=0.0, ae_model=None, clip=1.0):
+    def train_epoch(self, loader, recon_loss, optimizer, device, rec_mult=1.0, param_loss_w=0.0, enc_w=0.0, ae_model=None, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
@@ -65,7 +65,7 @@ class EstimatorSynth(nn.Module):
                 encoding_loss = enc_w*ae_model.encoding_loss(resyn_audio, data_dict['audio'])
             else:
                 encoding_loss = 0
-            batch_loss = spec_loss + wave_loss + param_loss_w * param_loss + encoding_loss
+            batch_loss = rec_mult*(spec_loss + wave_loss) + param_loss_w * param_loss + encoding_loss
             # Perform backward
             optimizer.zero_grad()
             batch_loss.backward()
@@ -144,8 +144,8 @@ class ParamEstimatorSynth(EstimatorSynth):
         params_dict = self.synth.fill_params(est_param, conditioning)
         outputs = self.synth.calculate_params(params_dict, audio_length)
         return outputs
-    
-    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, enc_w=0.0, ae_model=None, clip=1.0):
+
+    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, rec_mult=1.0, enc_w=0.0, ae_model=None, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
@@ -172,7 +172,7 @@ class NoParamEstimatorSynth(EstimatorSynth):
     def __init__(self, estimator, synth):
         super().__init__(estimator, synth)
 
-    def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, clip=1.0):
+    def train_epoch(self, loader, recon_loss, optimizer, device, rec_mult=1.0, param_loss_w=0.0, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
@@ -182,7 +182,7 @@ class NoParamEstimatorSynth(EstimatorSynth):
             resyn_audio, est_param = self(data_dict)
             # Reconstruction loss
             spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-            batch_loss = spec_loss + wave_loss
+            batch_loss = rec_mult*(spec_loss + wave_loss)
             # Perform backward
             optimizer.zero_grad()
             batch_loss.backward()

@@ -15,6 +15,7 @@ from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
 from diffsynth.perceptual.ae import get_wave_ae
 from diffsynth.perceptual.melae import get_mel_ae
+from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
 
 class WaveParamDataset(Dataset):
     def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True):
@@ -57,15 +58,22 @@ if __name__ == "__main__":
     parser.add_argument('--fft_sizes',        type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
     parser.add_argument('--hop_lengths',      type=int,   default=None, nargs='*', help='')
     parser.add_argument('--win_lengths',      type=int,   default=None, nargs='*', help='')
-    # spectral losses usually not used during pretraining
-    parser.add_argument('--mag_w',          type=float, default=0.0,            help='')
-    parser.add_argument('--log_mag_w',      type=float, default=0.0,            help='')
+    # spectral loss weights
+    parser.add_argument('--mag_w',          type=float, default=1.0,            help='')
+    parser.add_argument('--log_mag_w',      type=float, default=1.0,            help='')
+    # param loss weights
+    parser.add_argument('--p_w',            type=float, default=10.0,            help='')
+    # encoding loss (not used)
+    parser.add_argument('--enc_w',          type=float, default=0.0,            help='')
+    parser.add_argument('--ae_dir',         type=str,   default=None,            help='')
+    # waveform loss weights (not used)
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
-    parser.add_argument('--p_w',            type=float, default=10.0,            help='')
-    parser.add_argument('--enc_w',          type=float, default=0.0,            help='')
-    parser.add_argument('--ae_dir',         type=str,   default=None,            help='')
+    # weight schedule/annealing (ignores above values if specified)
+    parser.add_argument('--loss_sched',     type=str,   default=None,           help='')
+    # use only param loss during training and bypass synthesizer
+    parser.add_argument('--param_only', action='store_true')
 
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
@@ -140,7 +148,9 @@ if __name__ == "__main__":
     elif args.estimator == 'melgru':
         estimator = MelEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
-    if args.enc_w + args.mag_w + args.log_mag_w + args.l1_w + args.l2_w + args.linf_w == 0:
+    
+    if args.param_only:
+        # spectral loss not used during training
         model = ParamEstimatorSynth(estimator, synth).to(device)
     else:
         model = EstimatorSynth(estimator, synth).to(device)
@@ -167,6 +177,13 @@ if __name__ == "__main__":
         print('no autoencoder for perceptual loss')
         ae_model = None
 
+    if args.loss_sched is not None:
+        loss_mult_sched = ParamScheduler(SCHEDULE_REGISTRY[args.loss_sched])
+    else:
+        # multipliers for each loss during training
+        mult = {'param': 1.0, 'recon': 1.0}
+        loss_mult_sched = ParamScheduler(mult) # always 1.0 for both
+
     # initial state (epoch=0)
     with torch.no_grad():
         model.eval()
@@ -182,7 +199,9 @@ if __name__ == "__main__":
     best_loss = np.inf
     monitor='real/lsd'
     for i in tqdm.tqdm(range(1, args.epochs+1)):
-        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, param_loss_w=args.p_w, enc_w=args.enc_w, ae_model=ae_model)
+        loss_mult = loss_mult_sched.get_parameters(i)
+        p_w = args.p_w * loss_mult['param']
+        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_loss_w=p_w, enc_w=args.enc_w, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
