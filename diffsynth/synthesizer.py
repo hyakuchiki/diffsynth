@@ -120,6 +120,28 @@ class Synthesizer(nn.Module):
         
         return outputs[self.name], outputs
 
+    def calculate_params(self, dag_inputs, n_samples=None):
+        """ runs input through DAG of processors
+            but don't render audio
+        """
+        outputs = dag_inputs
+
+        for node in self.dag:
+            processor, connections = node
+            # fixed params are not in 0~1 and do not need to be scaled
+            scaled = [k for k in connections if connections[k] in self.fixed_param_names]
+            inputs = {key: outputs[connections[key]] for key in connections}
+            # skip audio generators
+            if isinstance(processor, Gen):
+                continue
+            # Run processor.
+            signal = processor.process(scaled_params=scaled, **inputs)
+
+            # Add the outputs of processor for use in subsequent processors
+            outputs[processor.name] = signal # audio/control signal output
+        
+        return outputs
+
     def uniform(self, batch_size, n_samples, device):
         """
         assumes parameters requiring external input is stationary (n_frames=1)

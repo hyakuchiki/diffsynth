@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
 
-    parser.add_argument('--patience',       type=int,   default=10,             help='')
+    parser.add_argument('--patience',       type=int,   default=15,             help='')
     parser.add_argument('--plot_interval',  type=int,   default=10,             help='')
     parser.add_argument('--nbworkers',      type=int,   default=4,              help='')
     args = parser.parse_args()
@@ -107,17 +107,17 @@ if __name__ == "__main__":
  
     # load real (out-of-domain) dataset (nsynth, etc)
     # just for monitoring during train.py
+    # the real dataset should be the same size as the synth. dataset
     real_dset = WaveParamDataset(args.real_dataset, params=False)
+    indices = np.random.choice(len(real_dset), len(syn_dset), replace=False)
+    real_dset = Subset(real_dset, indices)
     dset_len = len(real_dset)
     splits=[.8, .1, .1]
     split_sizes = [int(dset_len*splits[0]), int(dset_len*splits[1])]
     split_sizes.append(dset_len - split_sizes[0] - split_sizes[1])
 
     real_dset_train, real_dset_valid, real_dset_test = random_split(real_dset, lengths=split_sizes, generator=torch.Generator().manual_seed(0))
-    # not used during first phase of training but loaded and used later in resume.py
-    # the real training dataset should be the same size as the synth. dataset
-    indices = np.random.choice(len(real_dset_train), len(syn_dset_train), replace=False)
-    real_dset_train = Subset(real_dset_train, indices)
+
     assert len(syn_dset_train) == len(real_dset_train)
 
     real_train_loader = DataLoader(real_dset_train, shuffle=True, batch_size=args.batch_size, num_workers=4)
@@ -140,7 +140,10 @@ if __name__ == "__main__":
     elif args.estimator == 'melgru':
         estimator = MelEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
-    model = EstimatorSynth(estimator, synth).to(device)
+    if args.enc_w + args.mag_w + args.log_mag_w + args.l1_w + args.l2_w + args.linf_w == 0:
+        model = ParamEstimatorSynth(estimator, synth).to(device)
+    else:
+        model = EstimatorSynth(estimator, synth).to(device)
 
     # spectral loss (+waveform loss)
     recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
@@ -166,6 +169,7 @@ if __name__ == "__main__":
 
     # initial state (epoch=0)
     with torch.no_grad():
+        model.eval()
         resyn_audio, _output = model(syn_testbatch)
         save_to_board(0, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
         resyn_audio, _output = model(real_testbatch)
@@ -176,16 +180,18 @@ if __name__ == "__main__":
             writer.add_scalar('valid/'+k, valid_losses[k], 0)
     
     best_loss = np.inf
+    monitor='real/lsd'
     for i in tqdm.tqdm(range(1, args.epochs+1)):
         train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, param_loss_w=args.p_w, enc_w=args.enc_w, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
-        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses['syn/lsd']))
+        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
         writer.add_scalar('train/loss', train_loss, i)
+        scheduler.step(valid_losses[monitor])
         for k in valid_losses:
             writer.add_scalar('valid/'+k, valid_losses[k], i)
-        if valid_losses['syn/lsd'] < best_loss:
-            best_loss = valid_losses['syn/lsd']
+        if valid_losses[monitor] < best_loss:
+            best_loss = valid_losses[monitor]
             torch.save(model.state_dict(), os.path.join(model_dir, 'state_dict.pth'))
         if i % args.plot_interval == 0:
             # plot spectrograms

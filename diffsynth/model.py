@@ -127,15 +127,24 @@ class EstimatorSynth(nn.Module):
                     }
         return result
 
-# not used anymore
 class ParamEstimatorSynth(EstimatorSynth):
     """
     audio -> Estimator trained on parameter loss -> Synth -> audio
-    bypasses synthesizer (or not i guess) while training
+    bypasses synthesizer while training
     """
     def __init__(self, estimator, synth):
         super().__init__(estimator, synth)
 
+    def get_params(self, conditioning):
+        """
+        Don't render audio
+        """
+        audio_length = conditioning['audio'].shape[1]
+        est_param, conditioning = self.estimate_param(conditioning)
+        params_dict = self.synth.fill_params(est_param, conditioning)
+        outputs = self.synth.calculate_params(params_dict, audio_length)
+        return outputs
+    
     def train_epoch(self, loader, recon_loss, optimizer, device, param_loss_w, enc_w=0.0, ae_model=None, clip=1.0):
         self.train()
         sum_loss = 0
@@ -143,7 +152,7 @@ class ParamEstimatorSynth(EstimatorSynth):
             params = data_dict.pop('params')
             params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-            resyn_audio, outputs = self(data_dict)
+            outputs = self.get_params(data_dict)
             # Parameter loss
             batch_loss = param_loss_w * self.param_loss(outputs, params)
             # Perform backward

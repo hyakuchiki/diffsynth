@@ -13,7 +13,7 @@ from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
 from diffsynth.perceptual.ae import get_wave_ae
 from diffsynth.perceptual.melae import get_mel_ae
-from trainae import BasicWaveDataset
+from train import WaveParamDataset
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
 
-    parser.add_argument('--patience',       type=int,   default=10,             help='')
+    parser.add_argument('--patience',       type=int,   default=15,             help='')
     parser.add_argument('--plot_interval',  type=int,   default=10,             help='')
     parser.add_argument('--nbworkers',      type=int,   default=4,              help='')
     args = parser.parse_args()
@@ -115,6 +115,7 @@ if __name__ == "__main__":
 
     # initial state (epoch=0)
     with torch.no_grad():
+        model.eval()
         resyn_audio, _output = model(syn_testbatch)
         save_to_board(0, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
         resyn_audio, _output = model(real_testbatch)
@@ -123,18 +124,21 @@ if __name__ == "__main__":
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], 0)
         for k in valid_losses:
             writer.add_scalar('valid/'+k, valid_losses[k], 0)
+        print('Initial stats: real/lsd: {0:.4f}'.format(valid_losses['real/lsd']))
+
 
     best_loss = np.inf
+    monitor='real/lsd'
     for i in tqdm.tqdm(range(1, args.epochs+1)):
-        train_loss = model.train_epoch(loader=train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, param_loss_w=args.p_w, enc_w=args.enc_w)
+        train_loss = model.train_epoch(loader=train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, param_loss_w=args.p_w)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device)
-        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses['real/lsd']))
+        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
         writer.add_scalar('train/loss', train_loss, i)
         for k in valid_losses:
             writer.add_scalar('valid/'+k, valid_losses[k], i)
-        if valid_losses['real/lsd'] < best_loss:
-            best_loss = valid_losses['real/lsd']
+        if valid_losses[monitor] < best_loss:
+            best_loss = valid_losses[monitor]
             torch.save(model.state_dict, os.path.join(model_dir, 'state_dict.pth'))
         if i % args.plot_interval == 0:
             # plot spectrograms
