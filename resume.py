@@ -41,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
 
-    parser.add_argument('--patience',       type=int,   default=15,             help='')
+    parser.add_argument('--patience',       type=int,   default=200,            help='')
     parser.add_argument('--plot_interval',  type=int,   default=10,             help='')
     parser.add_argument('--nbworkers',      type=int,   default=4,              help='')
     args = parser.parse_args()

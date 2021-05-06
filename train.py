@@ -78,7 +78,7 @@ if __name__ == "__main__":
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
 
-    parser.add_argument('--patience',       type=int,   default=15,             help='')
+    parser.add_argument('--patience',       type=int,   default=200,            help='')
     parser.add_argument('--plot_interval',  type=int,   default=10,             help='')
     parser.add_argument('--nbworkers',      type=int,   default=4,              help='')
     args = parser.parse_args()
@@ -115,8 +115,8 @@ if __name__ == "__main__":
  
     # load real (out-of-domain) dataset (nsynth, etc)
     # just for monitoring during train.py
-    # the real dataset should be the same size as the synth. dataset
     real_dset = WaveParamDataset(args.real_dataset, params=False)
+    # the real dataset should be the same size as the synth. dataset
     indices = np.random.choice(len(real_dset), len(syn_dset), replace=False)
     real_dset = Subset(real_dset, indices)
     dset_len = len(real_dset)
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     # spectral loss (+waveform loss)
     recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, verbose=True, threshold=1e-5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=args.patience, verbose=True, threshold=1e-5)
 
     # encoding (perceptual) loss
     if args.ae_dir:

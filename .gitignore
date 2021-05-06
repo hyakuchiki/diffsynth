@@ -3,6 +3,7 @@
 note/
 __pycache__
 results/
+result/
 use_results/
 old/
 *.pyc
