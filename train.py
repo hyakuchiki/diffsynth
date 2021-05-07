@@ -54,7 +54,8 @@ if __name__ == "__main__":
     parser.add_argument('--epochs',     type=int,   default=200,    help='directory of dataset')
     parser.add_argument('--batch_size', type=int,   default=64,     help='directory of dataset')
     parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
-    # loss
+    parser.add_argument('--decay_rate',     type=float, default=1.0,            help='')
+    # Multiscale fft params
     parser.add_argument('--fft_sizes',        type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
     parser.add_argument('--hop_lengths',      type=int,   default=None, nargs='*', help='')
     parser.add_argument('--win_lengths',      type=int,   default=None, nargs='*', help='')
@@ -78,7 +79,6 @@ if __name__ == "__main__":
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
 
-    parser.add_argument('--patience',       type=int,   default=200,            help='')
     parser.add_argument('--plot_interval',  type=int,   default=10,             help='')
     parser.add_argument('--nbworkers',      type=int,   default=4,              help='')
     args = parser.parse_args()
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     # spectral loss (+waveform loss)
     recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=args.patience, verbose=True, threshold=1e-5)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
 
     # encoding (perceptual) loss
     if args.ae_dir:
@@ -206,7 +206,7 @@ if __name__ == "__main__":
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
         writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
         writer.add_scalar('train/loss', train_loss, i)
-        scheduler.step(valid_losses[monitor])
+        scheduler.step()
         for k in valid_losses:
             writer.add_scalar('valid/'+k, valid_losses[k], i)
         if valid_losses[monitor] < best_loss:
@@ -214,6 +214,7 @@ if __name__ == "__main__":
             torch.save(model.state_dict(), os.path.join(model_dir, 'state_dict.pth'))
         if i % args.plot_interval == 0:
             # plot spectrograms
+            torch.save(model.state_dict(), os.path.join(model_dir, 'statedict_{0:03}.pth'.format(i)))
             model.eval()
             with torch.no_grad():
                 resyn_audio, _output = model(syn_testbatch)
