@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.estimator import MFCCEstimator, MelEstimator
-from diffsynth.model import EstimatorSynth, ParamEstimatorSynth, NoParamEstimatorSynth
+from diffsynth.model import EstimatorSynth, NoParamEstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
 from diffsynth.perceptual.ae import get_wave_ae
@@ -73,8 +73,6 @@ if __name__ == "__main__":
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
     # weight schedule/annealing (ignores above values if specified)
     parser.add_argument('--loss_sched',     type=str,   default=None,           help='')
-    # use only param loss during training and bypass synthesizer
-    parser.add_argument('--param_only', action='store_true')
 
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
@@ -148,12 +146,7 @@ if __name__ == "__main__":
     elif args.estimator == 'melgru':
         estimator = MelEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
-    
-    if args.param_only:
-        # spectral loss not used during training
-        model = ParamEstimatorSynth(estimator, synth).to(device)
-    else:
-        model = EstimatorSynth(estimator, synth).to(device)
+    model = EstimatorSynth(estimator, synth).to(device)
 
     # spectral loss (+waveform loss)
     recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  

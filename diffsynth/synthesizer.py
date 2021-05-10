@@ -125,14 +125,19 @@ class Synthesizer(nn.Module):
             but don't render audio
         """
         outputs = dag_inputs
-
+        gen_list = []
         for node in self.dag:
             processor, connections = node
             # fixed params are not in 0~1 and do not need to be scaled
             scaled = [k for k in connections if connections[k] in self.fixed_param_names]
+            # does the processor require audio input from gen?
+            if any([(v in gen_list) for v in connections.values()]):
+                # skip processor
+                continue
             inputs = {key: outputs[connections[key]] for key in connections}
             # skip audio generators
             if isinstance(processor, Gen):
+                gen_list.append(processor.name)
                 continue
             # Run processor.
             signal = processor.process(scaled_params=scaled, **inputs)

@@ -25,9 +25,9 @@ if __name__ == "__main__":
     parser.add_argument('--epochs',     type=int,   default=400,    help='')
     parser.add_argument('--batch_size', type=int,   default=64,     help='')
     parser.add_argument('--lr',         type=float, default=1e-4,   help='')
-    parser.add_argument('--decay_rate',     type=float, default=1.0,            help='')
+    parser.add_argument('--decay_rate',     type=float, default=0.99,            help='')
     # Multiscale fft params
-    parser.add_argument('--fft_sizes',        type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
+    parser.add_argument('--fft_sizes',        type=int,   default=[64, 128, 256, 512, 1024, 2048], nargs='*', help='')
     parser.add_argument('--hop_lengths',      type=int,   default=None, nargs='*', help='')
     parser.add_argument('--win_lengths',      type=int,   default=None, nargs='*', help='')
     # spectral loss weights
@@ -140,8 +140,9 @@ if __name__ == "__main__":
             writer.add_scalar('valid/'+k, valid_losses[k], i)
         if valid_losses[monitor] < best_loss:
             best_loss = valid_losses[monitor]
-            torch.save(model.state_dict, os.path.join(model_dir, 'state_dict.pth'))
+            torch.save(model.state_dict(), os.path.join(model_dir, 'state_dict.pth'))
         if i % args.plot_interval == 0:
+            torch.save(model.state_dict(), os.path.join(model_dir, 'statedict_{0:03}.pth'.format(i)))
             # plot spectrograms
             model.eval()
             with torch.no_grad():
