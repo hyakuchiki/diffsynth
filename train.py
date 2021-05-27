@@ -1,48 +1,19 @@
 import os, tqdm, glob, argparse, json
 from types import SimpleNamespace
 import numpy as np
-import matplotlib.pyplot as plt
 import librosa
 import torch
-from torch.utils.data import Subset, DataLoader, Dataset, ConcatDataset, random_split
 from torch.utils.tensorboard import SummaryWriter
 
 
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.estimator import MFCCEstimator, MelEstimator
-from diffsynth.model import EstimatorSynth, NoParamEstimatorSynth
+from diffsynth.model import EstimatorSynth
 from diffsynth.modelutils import construct_synths
-from trainutils import save_to_board
+from trainutils import save_to_board, get_loaders, WaveParamDataset
 from diffsynth.perceptual.ae import get_wave_ae
 from diffsynth.perceptual.melae import get_mel_ae
 from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
-
-class WaveParamDataset(Dataset):
-    def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True):
-        self.audio_dir = os.path.join(base_dir, 'audio')
-        self.raw_files = sorted(glob.glob(os.path.join(self.audio_dir, '*.wav')))
-        print('loaded {0} files'.format(len(self.raw_files)))
-        self.length = length
-        self.sample_rate = sample_rate
-        self.params = params
-        if params:
-            self.param_dir = os.path.join(base_dir, 'param')
-            assert os.path.exists(self.param_dir)
-            self.param_files = sorted(glob.glob(os.path.join(self.param_dir, '*.pt')))
-    
-    def __getitem__(self, idx):
-        output = {}
-        raw_path = self.raw_files[idx]
-        audio, _sr = librosa.load(raw_path, sr=self.sample_rate, duration=self.length)
-        assert audio.shape[0] == self.length * self.sample_rate
-        if self.params:
-            params = torch.load(self.param_files[idx])
-            return {'audio': audio, 'params': params}
-        else:
-            return {'audio': audio}
-
-    def __len__(self):
-        return len(self.raw_files)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -64,7 +35,7 @@ if __name__ == "__main__":
     parser.add_argument('--log_mag_w',      type=float, default=1.0,            help='')
     # param loss weights
     parser.add_argument('--p_w',            type=float, default=10.0,            help='')
-    # encoding loss (not used)
+    # encoding loss
     parser.add_argument('--enc_w',          type=float, default=0.0,            help='')
     parser.add_argument('--ae_dir',         type=str,   default=None,            help='')
     # waveform loss weights (not used)
@@ -101,34 +72,18 @@ if __name__ == "__main__":
 
     # load synthetic dataset
     syn_dset = WaveParamDataset(args.syn_dataset, params=True)
-    dset_len = len(syn_dset)
-    splits=[.8, .1, .1]
-    split_sizes = [int(dset_len*splits[0]), int(dset_len*splits[1])]
-    split_sizes.append(dset_len - split_sizes[0] - split_sizes[1])
-
-    syn_dset_train, syn_dset_valid, syn_dset_test = random_split(syn_dset, lengths=split_sizes, generator=torch.Generator().manual_seed(0))
-    syn_train_loader = DataLoader(syn_dset_train, shuffle=True, batch_size=args.batch_size, num_workers=4)
-    syn_valid_loader = DataLoader(syn_dset_valid, batch_size=args.batch_size, num_workers=4)
-    syn_test_loader = DataLoader(syn_dset_test, batch_size=args.batch_size, num_workers=4)
+    syn_dsets, syn_loaders = get_loaders(syn_dset, args.batch_size, splits=[.8, .1, .1], nbworkers=args.nbworkers)
+    syn_dset_train, syn_dset_valid, syn_dset_test = syn_dsets
+    syn_train_loader, syn_valid_loader, syn_test_loader = syn_loaders
  
     # load real (out-of-domain) dataset (nsynth, etc)
     # just for monitoring during train.py
     real_dset = WaveParamDataset(args.real_dataset, params=False)
     # the real dataset should be the same size as the synth. dataset
-    indices = np.random.choice(len(real_dset), len(syn_dset), replace=False)
-    real_dset = Subset(real_dset, indices)
-    dset_len = len(real_dset)
-    splits=[.8, .1, .1]
-    split_sizes = [int(dset_len*splits[0]), int(dset_len*splits[1])]
-    split_sizes.append(dset_len - split_sizes[0] - split_sizes[1])
-
-    real_dset_train, real_dset_valid, real_dset_test = random_split(real_dset, lengths=split_sizes, generator=torch.Generator().manual_seed(0))
-
+    real_dsets, real_loaders = get_loaders(real_dset, args.batch_size, subset_train=len(syn_dset_train), splits=[.8, .1, .1], nbworkers=args.nbworkers)
+    real_dset_train, real_dset_valid, real_dset_test = real_dsets
+    real_train_loader, real_valid_loader, real_test_loader = real_loaders
     assert len(syn_dset_train) == len(real_dset_train)
-
-    real_train_loader = DataLoader(real_dset_train, shuffle=True, batch_size=args.batch_size, num_workers=4)
-    real_valid_loader = DataLoader(real_dset_valid, batch_size=args.batch_size, num_workers=4)
-    real_test_loader = DataLoader(real_dset_test, batch_size=args.batch_size, num_workers=4)
 
     syn_testbatch = next(iter(syn_valid_loader))
     syn_testbatch.pop('params')
@@ -194,6 +149,8 @@ if __name__ == "__main__":
     for i in tqdm.tqdm(range(1, args.epochs+1)):
         loss_mult = loss_mult_sched.get_parameters(i)
         p_w = args.p_w * loss_mult['param']
+        if 'enc' in loss_mult:
+            enc_w = args.enc_w * loss_mult['enc']
         train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_loss_w=p_w, enc_w=args.enc_w, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))

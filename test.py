@@ -16,7 +16,7 @@ import soundfile as sf
 def write_plot_audio(y, name):
     # y; numpy array of audio
     # write audio file
-    sf.write('{0}.ogg'.format(name), y, 16000)
+    sf.write('{0}.wav'.format(name), y, 16000)
     fig, ax = plt.subplots(figsize=(1.5, 1))
     ax.axis('off')
     plot_spec(y, ax, 16000)
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('load_dir',         type=str,   help='')
     parser.add_argument('dataset_dir',      type=str,   help='directory of saved dataset')
-    parser.add_argument('--batch_size',     type=int,   default=32,     help='')
+    parser.add_argument('--batch_size',     type=int,   default=64,     help='')
     parser.add_argument('--epoch',          type=int,   default=None,     help='')
     args = parser.parse_args()
 
@@ -35,10 +35,12 @@ if __name__ == "__main__":
     np.random.seed(seed=0) # subset
     device = 'cuda'
 
+    args.load_dir.rstrip('/')
     output_dir = args.load_dir.replace('results', 'output')
+    os.makedirs(output_dir, exist_ok=True)
+    target_dir = os.path.join(os.path.split(output_dir)[0], 'target')
+    os.makedirs(target_dir, exist_ok=True)
 
-    audio_dir = os.path.join(output_dir, 'audio')
-    os.makedirs(audio_dir, exist_ok=True)
     model_dir = os.path.join(args.load_dir, 'model')
 
     pre_args_file = os.path.join(args.load_dir, 'args.txt')
@@ -90,15 +92,15 @@ if __name__ == "__main__":
         syn_resyn_audio, _output = model(syn_testbatch)
         for i in range(args.batch_size):
             resyn_audio = syn_resyn_audio[i].detach().cpu().numpy()
-            write_plot_audio(resyn_audio, os.path.join(audio_dir, 'synth_{0:03}_resyn'.format(i)))
+            write_plot_audio(resyn_audio, os.path.join(output_dir, 'synth_{0:03}'.format(i)))
             orig_audio = syn_testbatch['audio'][i].detach().cpu().numpy()
-            write_plot_audio(orig_audio, os.path.join(audio_dir, 'synth_{0:03}_orig'.format(i)))
+            write_plot_audio(orig_audio, os.path.join(target_dir, 'synth_{0:03}'.format(i)))
         real_resyn_audio, _output = model(real_testbatch)
         for i in range(args.batch_size):
             resyn_audio = real_resyn_audio[i].detach().cpu().numpy()
-            write_plot_audio(resyn_audio, os.path.join(audio_dir, 'real_{0:03}_resyn'.format(i)))
+            write_plot_audio(resyn_audio, os.path.join(output_dir, 'real_{0:03}'.format(i)))
             orig_audio = real_testbatch['audio'][i].detach().cpu().numpy()
-            write_plot_audio(orig_audio, os.path.join(audio_dir, 'real_{0:03}_orig'.format(i)))
+            write_plot_audio(orig_audio, os.path.join(target_dir, 'real_{0:03}'.format(i)))
         
         print('finished writing audio')
         # get objective measure

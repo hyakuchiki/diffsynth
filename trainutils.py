@@ -1,13 +1,55 @@
-import os
+import os, glob
 import numpy as np
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
+import torch
+from torch.utils.data import Subset, Dataset, DataLoader, random_split
+
+class WaveParamDataset(Dataset):
+    def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True):
+        self.audio_dir = os.path.join(base_dir, 'audio')
+        self.raw_files = sorted(glob.glob(os.path.join(self.audio_dir, '*.wav')))
+        print('loaded {0} files'.format(len(self.raw_files)))
+        self.length = length
+        self.sample_rate = sample_rate
+        self.params = params
+        if params:
+            self.param_dir = os.path.join(base_dir, 'param')
+            assert os.path.exists(self.param_dir)
+            self.param_files = sorted(glob.glob(os.path.join(self.param_dir, '*.pt')))
+    
+    def __getitem__(self, idx):
+        raw_path = self.raw_files[idx]
+        audio, _sr = librosa.load(raw_path, sr=self.sample_rate, duration=self.length)
+        assert audio.shape[0] == self.length * self.sample_rate
+        if self.params:
+            params = torch.load(self.param_files[idx])
+            return {'audio': audio, 'params': params}
+        else:
+            return {'audio': audio}
+
+    def __len__(self):
+        return len(self.raw_files)
 
 def plot_spec(y, ax, sr=16000):
     D = librosa.stft(y)  # STFT of y
     S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
     img = librosa.display.specshow(S_db, sr=sr, x_axis='time', y_axis='log', ax=ax)
+
+def get_loaders(dset, batch_size, subset_train=None, splits=[.8, .1, .1], nbworkers=4):
+    dset_l = len(dset)
+    split_sizes = [int(dset_l*splits[0]), int(dset_l*splits[1])]
+    split_sizes.append(dset_l - split_sizes[0] - split_sizes[1])
+    dset_train, dset_valid, dset_test = random_split(dset, lengths=split_sizes, generator=torch.Generator().manual_seed(0))
+    if subset_train is not None:
+        indices = np.random.choice(len(dset_train), subset_train, replace=False)
+        dset_train = Subset(dset_train, indices)
+    
+    dl_train = DataLoader(dset_train, batch_size=batch_size, shuffle=True, num_workers=nbworkers, pin_memory=True)
+    dl_valid = DataLoader(dset_valid, batch_size=batch_size, num_workers=nbworkers, pin_memory=True)
+    dl_test = DataLoader(dset_test, batch_size=batch_size, num_workers=nbworkers, pin_memory=True)
+    return (dset_train, dset_valid, dset_test), (dl_train, dl_valid, dl_test)
 
 def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, save=True):
     """Plot spectrograms/waveforms of original/reconstructed audio
