@@ -4,7 +4,7 @@ import numpy as np
 import librosa
 import torch
 from torch.utils.tensorboard import SummaryWriter
-
+from torch.utils.data import Subset
 
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.estimator import MFCCEstimator, MelEstimator
@@ -79,10 +79,13 @@ if __name__ == "__main__":
     # load real (out-of-domain) dataset (nsynth, etc)
     # just for monitoring during train.py
     real_dset = WaveParamDataset(args.real_dataset, params=False)
-    # the real dataset should be the same size as the synth. dataset
-    real_dsets, real_loaders = get_loaders(real_dset, args.batch_size, subset_train=len(syn_dset_train), splits=[.8, .1, .1], nbworkers=args.nbworkers)
+    # same size as syn_dset
+    indices = np.random.choice(len(real_dset), len(syn_dset), replace=False)
+    real_dset = Subset(real_dset, indices)
+    real_dsets, real_loaders = get_loaders(real_dset, args.batch_size, splits=[.8, .1, .1], nbworkers=args.nbworkers)
     real_dset_train, real_dset_valid, real_dset_test = real_dsets
     real_train_loader, real_valid_loader, real_test_loader = real_loaders
+    # the real dataset should be the same size as the synth. dataset
     assert len(syn_dset_train) == len(real_dset_train)
 
     syn_testbatch = next(iter(syn_valid_loader))
@@ -121,6 +124,8 @@ if __name__ == "__main__":
             ae_model = get_mel_ae(ae_args.encoder_dims, ae_args.latent_size, syn_testbatch['audio'].shape[-1])
         ae_model.load_state_dict(torch.load(os.path.join(args.ae_dir, 'model/state_dict.pth')))
         ae_model = ae_model.eval().to(device)
+        for param in ae_model.parameters():
+            param.requires_grad = False
     else:
         print('no autoencoder for perceptual loss')
         ae_model = None
@@ -140,7 +145,7 @@ if __name__ == "__main__":
         resyn_audio, _output = model(real_testbatch)
         save_to_board(0, 'real', writer, real_testbatch['audio'], resyn_audio, 8)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
-        writer.add_scalar('lr', optimizer.param_groups[0]['lr'], 0)
+        writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], 0)
         for k in valid_losses:
             writer.add_scalar('valid/'+k, valid_losses[k], 0)
     
@@ -151,10 +156,15 @@ if __name__ == "__main__":
         p_w = args.p_w * loss_mult['param']
         if 'enc' in loss_mult:
             enc_w = args.enc_w * loss_mult['enc']
-        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_loss_w=p_w, enc_w=args.enc_w, ae_model=ae_model)
+        else:
+            enc_w = 0
+        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_loss_w=p_w, enc_w=enc_w, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
-        writer.add_scalar('lr', optimizer.param_groups[0]['lr'], i)
+        writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], i)
+        writer.add_scalar('learn_p/enc_w', enc_w, i)
+        writer.add_scalar('learn_p/p_w', p_w, i)
+        writer.add_scalar('learn_p/recon_w', loss_mult['recon'], i)
         writer.add_scalar('train/loss', train_loss, i)
         scheduler.step()
         for k in valid_losses:

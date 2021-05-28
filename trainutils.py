@@ -46,9 +46,9 @@ def get_loaders(dset, batch_size, subset_train=None, splits=[.8, .1, .1], nbwork
         indices = np.random.choice(len(dset_train), subset_train, replace=False)
         dset_train = Subset(dset_train, indices)
     
-    dl_train = DataLoader(dset_train, batch_size=batch_size, shuffle=True, num_workers=nbworkers, pin_memory=True)
-    dl_valid = DataLoader(dset_valid, batch_size=batch_size, num_workers=nbworkers, pin_memory=True)
-    dl_test = DataLoader(dset_test, batch_size=batch_size, num_workers=nbworkers, pin_memory=True)
+    dl_train = DataLoader(dset_train, batch_size=batch_size, shuffle=True, num_workers=nbworkers, pin_memory=False)
+    dl_valid = DataLoader(dset_valid, batch_size=batch_size, num_workers=nbworkers, pin_memory=False)
+    dl_test = DataLoader(dset_test, batch_size=batch_size, num_workers=nbworkers, pin_memory=False)
     return (dset_train, dset_valid, dset_test), (dl_train, dl_valid, dl_test)
 
 def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, save=True):
