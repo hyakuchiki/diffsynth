@@ -104,4 +104,4 @@ if __name__ == "__main__":
                     save_to_board_mel(i, writer, mel, recon_mel, 8)
                 else:
                     resyn_audio = model(testbatch)
-                    save_to_board(i, writer, testbatch['audio'], resyn_audio, 8)
+                    save_to_board(i, 'audio', writer, testbatch['audio'], resyn_audio, 8)

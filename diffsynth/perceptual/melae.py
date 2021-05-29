@@ -22,7 +22,7 @@ def get_mel_ae(encoder_dims, latent_size, n_samples, n_mels=128, n_fft=2048, hop
 class MelAE(nn.Module):
     def __init__(self, encoder, decoder, encoder_dims, latent_size, n_samples, n_mels=128, n_fft=2048, hop=512, sr=16000, norm='batch'):
         super().__init__()
-        self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sr), LogTransform())
+        self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sr, power=2), LogTransform())
         self.norm = Normalize2d(norm) if norm else None
         # for n_samples = 16384 and n_fft=2048, hop=512, this is 29
         spec_len = math.ceil((n_samples - n_fft) / hop) + 1

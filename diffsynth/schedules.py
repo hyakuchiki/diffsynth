@@ -55,6 +55,15 @@ only_param = {
 
 SCHEDULE_REGISTRY['only_param'] = only_param
 
+only_enc = {
+    'unit': 'epochs',
+    'param': 0.0,
+    'recon': 0.0,
+    'enc': 10.0,
+}
+
+SCHEDULE_REGISTRY['only_enc'] = only_enc
+
 class ParamScheduler():
     def __init__(self, schedule_dict):
         self.sched = schedule_dict
