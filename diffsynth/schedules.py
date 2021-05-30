@@ -64,6 +64,25 @@ only_enc = {
 
 SCHEDULE_REGISTRY['only_enc'] = only_enc
 
+switch_only_e = {
+    'unit': 'epochs',
+    'param': functools.partial(linear_anneal, end_value=0.0, start_value=1.0, start=50, warm=150),
+    'recon': 0.0,
+    'enc': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+}
+
+SCHEDULE_REGISTRY['switch_only_e'] = switch_only_e
+
+switch_mfcc = {
+    'unit': 'epochs',
+    'param': functools.partial(linear_anneal, end_value=0.0, start_value=1.0, start=50, warm=150),
+    'recon': 0.0,
+    'enc': 0.0,
+    'mfcc': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+}
+
+SCHEDULE_REGISTRY['switch_mfcc'] = switch_mfcc
+
 class ParamScheduler():
     def __init__(self, schedule_dict):
         self.sched = schedule_dict

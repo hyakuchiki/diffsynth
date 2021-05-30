@@ -42,6 +42,8 @@ if __name__ == "__main__":
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
+
+    parser.add_argument('--mfcc_w',         type=float, default=0.0,            help='')
     # weight schedule/annealing (ignores above values if specified)
     parser.add_argument('--loss_sched',     type=str,   default=None,           help='')
 
@@ -154,17 +156,22 @@ if __name__ == "__main__":
     for i in tqdm.tqdm(range(1, args.epochs+1)):
         loss_mult = loss_mult_sched.get_parameters(i)
         p_w = args.p_w * loss_mult['param']
+        if 'mfcc' in loss_mult:
+            mfcc_w = args.mfcc_w * loss_mult['mfcc']
+        else:
+            mfcc_w = 0
         if 'enc' in loss_mult:
             enc_w = args.enc_w * loss_mult['enc']
         else:
             enc_w = 0
-        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_loss_w=p_w, enc_w=enc_w, ae_model=ae_model)
+        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_loss_w=p_w, enc_w=enc_w, mfcc_w=mfcc_w, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
         writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], i)
         writer.add_scalar('learn_p/enc_w', enc_w, i)
         writer.add_scalar('learn_p/p_w', p_w, i)
         writer.add_scalar('learn_p/recon_w', loss_mult['recon'], i)
+        writer.add_scalar('learn_p/mfcc_w', mfcc_w, i)
         writer.add_scalar('train/loss', train_loss, i)
         scheduler.step()
         for k in valid_losses:
