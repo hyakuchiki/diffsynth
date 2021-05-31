@@ -12,7 +12,7 @@ class EstimatorSynth(nn.Module):
         super().__init__()
         self.estimator = estimator
         self.synth = synth
-        self.mfcc = Mfcc()
+        self.mfcc = Mfcc(n_fft=1024, hop_length=256)
 
     def param_loss(self, synth_output, param_dict):
         loss = 0

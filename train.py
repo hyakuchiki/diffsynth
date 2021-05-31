@@ -46,6 +46,7 @@ if __name__ == "__main__":
     parser.add_argument('--mfcc_w',         type=float, default=0.0,            help='')
     # weight schedule/annealing (ignores above values if specified)
     parser.add_argument('--loss_sched',     type=str,   default=None,           help='')
+    parser.add_argument('--load_model',     type=str,   default=None,           help='')
 
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
@@ -139,21 +140,32 @@ if __name__ == "__main__":
         mult = {'param': 1.0, 'recon': 1.0}
         loss_mult_sched = ParamScheduler(mult) # always 1.0 for both
 
+    # resume 
+    if args.load_model:
+        model.load_state_dict(torch.load(args.load_model))
+        resume_epoch = int(args.load_model[-7:-4]) # *_000.pth
+        print('resuming from {0}th epoch'.format(resume_epoch))
+        for i in range(1, resume_epoch+1):
+            scheduler.step() # set lr appropriately
+    else:
+        resume_epoch = 0
+
     # initial state (epoch=0)
     with torch.no_grad():
         model.eval()
         resyn_audio, _output = model(syn_testbatch)
-        save_to_board(0, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
+        save_to_board(resume_epoch, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
         resyn_audio, _output = model(real_testbatch)
-        save_to_board(0, 'real', writer, real_testbatch['audio'], resyn_audio, 8)
+        save_to_board(resume_epoch, 'real', writer, real_testbatch['audio'], resyn_audio, 8)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
-        writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], 0)
+        writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], resume_epoch)
         for k in valid_losses:
-            writer.add_scalar('valid/'+k, valid_losses[k], 0)
+            writer.add_scalar('valid/'+k, valid_losses[k], resume_epoch)
     
     best_loss = np.inf
     monitor='real/lsd'
-    for i in tqdm.tqdm(range(1, args.epochs+1)):
+
+    for i in tqdm.tqdm(range(resume_epoch+1, args.epochs+1)):
         loss_mult = loss_mult_sched.get_parameters(i)
         p_w = args.p_w * loss_mult['param']
         if 'mfcc' in loss_mult:
