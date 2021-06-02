@@ -176,7 +176,7 @@ if __name__ == "__main__":
             enc_w = args.enc_w * loss_mult['enc']
         else:
             enc_w = 0
-        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_loss_w=p_w, enc_w=enc_w, mfcc_w=mfcc_w, ae_model=ae_model)
+        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_w=p_w, mfcc_w=mfcc_w, enc_w=enc_w, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
         writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], i)

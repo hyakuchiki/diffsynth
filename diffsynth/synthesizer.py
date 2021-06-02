@@ -116,9 +116,9 @@ class Synthesizer(nn.Module):
 
         #Use the output of final processor as signal
         output_name = self.dag[-1][0].name
-        outputs[self.name] = outputs[output_name]
+        outputs['output'] = outputs[output_name]
         
-        return outputs[self.name], outputs
+        return outputs['output'], outputs
 
     def calculate_params(self, dag_inputs, n_samples=None):
         """ runs input through DAG of processors

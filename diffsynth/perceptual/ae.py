@@ -213,7 +213,7 @@ class AE(nn.Module):
         z_tilde = self.map_latent(encoder_output)
         return z_tilde
 
-    def encoding_loss(self, input_audio, target_audio):
+    def encoding_loss(self, target_audio, input_audio):
         batch_size = input_audio.shape[0]
         audios = torch.cat([input_audio, target_audio], dim=0)
         encodings = self.encode_audio(audios)

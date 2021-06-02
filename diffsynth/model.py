@@ -4,6 +4,25 @@ import torch.nn.functional as F
 import diffsynth.util as util
 from diffsynth.spectral import compute_lsd, Mfcc
 
+class LossLog():
+    def __init__(self):
+        self.stats = dict()
+
+    def __getitem__(self, key):
+        return sum(self.stats[key]) / len(self.stats[key])
+
+    def average(self):
+        return {k: sum(v)/len(v) for k, v in self.stats.items()}
+
+    def update(self, stat_dict):
+        for k, v in stat_dict.items():
+            # turn into python float
+            val = v.item() if isinstance(v, torch.Tensor) else v
+            if k in self.stats:
+                self.stats[k].append(val)
+            else:
+                self.stats[k] = [val,]
+
 class EstimatorSynth(nn.Module):
     """
     audio -> Estimator -> Synth -> audio
@@ -12,7 +31,7 @@ class EstimatorSynth(nn.Module):
         super().__init__()
         self.estimator = estimator
         self.synth = synth
-        self.mfcc = Mfcc(n_fft=1024, hop_length=256)
+        self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20)
 
     def param_loss(self, synth_output, param_dict):
         loss = 0
@@ -61,37 +80,54 @@ class EstimatorSynth(nn.Module):
         outputs = self.synth.calculate_params(params_dict, audio_length)
         return outputs
 
-    def train_epoch(self, loader, recon_loss, optimizer, device, rec_mult=1.0, param_loss_w=0.0, enc_w=0.0, mfcc_w=0.0, ae_model=None, clip=1.0):
+    def losses(self, target, output, recon_loss, ae_model=None, param_w=1.0, rec_mult=1.0, mfcc_w=1.0, lsd_w=1.0, enc_w=1.0):
+        target_audio = target['audio']
+        resyn_audio = output['output']
+        if param_w > 0.0 and 'params' in target:
+            param_loss = param_w * self.param_loss(output, target['params'])
+        else:
+            param_loss = 0.0
+        if rec_mult>0.0:
+            # Reconstruction loss
+            spec_loss, wave_loss = recon_loss(target_audio, resyn_audio)
+            spec_loss, wave_loss = rec_mult * spec_loss, rec_mult * wave_loss
+        else:
+            spec_loss, wave_loss = (0, 0)
+        if mfcc_w > 0.0:
+            mfcc_loss = mfcc_w*F.l1_loss(self.mfcc(target_audio), self.mfcc(resyn_audio))
+        else:
+            mfcc_loss = 0
+        if lsd_w>0.0:
+            lsd_loss = lsd_w*compute_lsd(target_audio, resyn_audio)
+        else:
+            lsd_loss = 0
+        if enc_w>0.0 and ae_model is not None:
+            encoding_loss = enc_w*ae_model.encoding_loss(target_audio, resyn_audio)
+        else:
+            encoding_loss = 0
+        return {'param': param_loss, 'spec': spec_loss, 'wave': wave_loss, 'mfcc': mfcc_loss, 'lsd': lsd_loss, 'enc': encoding_loss}
+
+    def train_epoch(self, loader, recon_loss, optimizer, device, rec_mult=1.0, param_w=0.0, mfcc_w=0.0, enc_w=0.0, ae_model=None, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
+            # send data to device
             params = data_dict.pop('params')
             params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
+            data_dict['params'] = params
+
             if rec_mult+enc_w+mfcc_w <= 0:
                 # do not render audio because reconstruction is unnecessary
                 outputs = self.get_params(data_dict)
                 # Parameter loss
-                batch_loss = param_loss_w * self.param_loss(outputs, params)
+                batch_loss = param_w * self.param_loss(outputs, params)
             else:
                 # render audio
                 resyn_audio, outputs = self(data_dict)
                 # Parameter loss
-                param_loss = self.param_loss(outputs, params)
-                if rec_mult>0.0:
-                    # Reconstruction loss
-                    spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-                else:
-                    spec_loss, wave_loss = (0, 0)
-                if enc_w>0.0:
-                    encoding_loss = enc_w*ae_model.encoding_loss(resyn_audio, data_dict['audio'])
-                else:
-                    encoding_loss = 0
-                if mfcc_w > 0.0:
-                    mfcc_loss = F.l1_loss(self.mfcc(data_dict['audio']), self.mfcc(resyn_audio))
-                else:
-                    mfcc_loss = 0
-                batch_loss = rec_mult*(spec_loss + wave_loss) + param_loss_w * param_loss + encoding_loss + mfcc_w * mfcc_loss
+                losses = self.losses(data_dict, outputs, recon_loss, ae_model, rec_mult=rec_mult, mfcc_w=mfcc_w, lsd_w=0, enc_w=enc_w)
+                batch_loss = sum(losses)
             # Perform backward
             optimizer.zero_grad()
             batch_loss.backward()
@@ -103,62 +139,35 @@ class EstimatorSynth(nn.Module):
 
     def eval_epoch(self, syn_loader, real_loader, recon_loss, device, ae_model=None):
         self.eval()
-        sum_syn_spec_loss = 0
-        sum_syn_param_loss = 0
-        sum_syn_lsd = 0
-        sum_syn_encoding_loss = 0
-        sum_syn_mfcc = 0
+        # in-domain
+        syn_result = LossLog()
         with torch.no_grad():
             for data_dict in syn_loader:
                 params = data_dict.pop('params')
                 params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
+                data_dict['params'] = params
+
                 resyn_audio, outputs = self(data_dict)
                 # Reconstruction loss
-                param_loss = self.param_loss(outputs, params)
-                spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-                sum_syn_spec_loss += spec_loss.detach().item()
-                sum_syn_lsd += compute_lsd(data_dict['audio'], resyn_audio).item()
-                sum_syn_mfcc += F.l1_loss(self.mfcc(data_dict['audio']), self.mfcc(resyn_audio)).detach().item()
-                sum_syn_param_loss += param_loss.detach().item()
-                if ae_model is not None:
-                    sum_syn_encoding_loss += ae_model.encoding_loss(resyn_audio, data_dict['audio']).detach().item()
-        sum_syn_spec_loss /= len(syn_loader)
-        sum_syn_param_loss /= len(syn_loader)
-        sum_syn_lsd /= len(syn_loader)
-        sum_syn_encoding_loss /= len(syn_loader)
-        sum_syn_mfcc /= len(syn_loader)
+                losses = self.losses(data_dict, outputs, recon_loss, ae_model)
+                syn_result.update(losses)
+        syn_result_dict = {'syn/'+k: v for k, v in syn_result.average().items()}
 
-        sum_real_spec_loss = 0
-        sum_real_lsd = 0
-        sum_real_encoding_loss = 0
-        sum_real_mfcc = 0
+        # out-of-domain
+        real_result = LossLog()
         with torch.no_grad():
             for data_dict in real_loader:
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
                 resyn_audio, outputs = self(data_dict)
                 # Reconstruction loss
-                spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-                sum_real_spec_loss += spec_loss.detach().item()
-                sum_real_lsd += compute_lsd(data_dict['audio'], resyn_audio).item()
-                sum_real_mfcc += F.l1_loss(self.mfcc(data_dict['audio']), self.mfcc(resyn_audio)).detach().item()
-                if ae_model is not None:
-                    sum_real_encoding_loss += ae_model.encoding_loss(resyn_audio, data_dict['audio']).detach().item()
+                losses = self.losses(data_dict, outputs, recon_loss, ae_model, param_w=0)
+                real_result.update(losses)
+        real_result_dict = {'real/'+k: v for k, v in real_result.average().items()}
 
-        sum_real_spec_loss /= len(real_loader)
-        sum_real_lsd /= len(real_loader)
-        sum_real_encoding_loss /= len(real_loader)
-        sum_real_mfcc /= len(real_loader)
-        result = {  'syn/spec': sum_syn_spec_loss,
-                    'syn/param': sum_syn_param_loss, 
-                    'syn/lsd': sum_syn_lsd, 
-                    'syn/enc': sum_syn_encoding_loss,
-                    'syn/mfcc': sum_syn_mfcc,
-                    'real/spec': sum_real_spec_loss,
-                    'real/lsd': sum_real_lsd, 
-                    'real/enc': sum_real_encoding_loss,
-                    'real/mfcc': sum_real_mfcc
-                    }
+        result = {}
+        result.update(syn_result_dict)
+        result.update(real_result_dict)
         return result
 
 class NoParamEstimatorSynth(EstimatorSynth):
@@ -169,25 +178,17 @@ class NoParamEstimatorSynth(EstimatorSynth):
     def __init__(self, estimator, synth):
         super().__init__(estimator, synth)
 
-    def train_epoch(self, loader, recon_loss, optimizer, device, rec_mult=1.0, param_loss_w=0.0, enc_w=0.0, mfcc_w=0.0, ae_model=None, clip=1.0):
+    def train_epoch(self, loader, recon_loss, optimizer, device, rec_mult=1.0, param_w=0.0, enc_w=0.0, mfcc_w=0.0, ae_model=None, clip=1.0):
         self.train()
         sum_loss = 0
         for data_dict in loader:
             if 'params' in data_dict:
                 params = data_dict.pop('params')
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-            resyn_audio, est_param = self(data_dict)
+            resyn_audio, outputs = self(data_dict)
             # Reconstruction loss
-            spec_loss, wave_loss = recon_loss(data_dict['audio'], resyn_audio)
-            if mfcc_w > 0.0:
-                mfcc_loss = F.l1_loss(self.mfcc(data_dict['audio']), self.mfcc(resyn_audio))
-            else:
-                mfcc_loss = 0     
-            if enc_w>0.0:
-                encoding_loss = enc_w*ae_model.encoding_loss(resyn_audio, data_dict['audio'])
-            else:
-                encoding_loss = 0
-            batch_loss = rec_mult*(spec_loss + wave_loss) + encoding_loss + mfcc_w * mfcc_loss
+            losses = self.losses(data_dict, outputs, recon_loss, ae_model, rec_mult=rec_mult, mfcc_w=mfcc_w, lsd_w=0, enc_w=enc_w)
+            batch_loss = sum(losses)
             # Perform backward
             optimizer.zero_grad()
             batch_loss.backward()
