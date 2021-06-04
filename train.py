@@ -21,6 +21,7 @@ if __name__ == "__main__":
     parser.add_argument('syn_dataset',      type=str,   help='directory of synthetic dataset')
     parser.add_argument('real_dataset',      type=str,   help='directory of real dataset')
     parser.add_argument('synth',        type=str,   help='synth name')
+    parser.add_argument('loss_sched',     type=str, help='')
     parser.add_argument('--estimator',  type=str,   default='melgru', help='estimator name')
     parser.add_argument('--epochs',     type=int,   default=200,    help='directory of dataset')
     parser.add_argument('--batch_size', type=int,   default=64,     help='directory of dataset')
@@ -33,19 +34,14 @@ if __name__ == "__main__":
     # spectral loss weights
     parser.add_argument('--mag_w',          type=float, default=1.0,            help='')
     parser.add_argument('--log_mag_w',      type=float, default=1.0,            help='')
-    # param loss weights
-    parser.add_argument('--p_w',            type=float, default=10.0,            help='')
-    # encoding loss
-    parser.add_argument('--enc_w',          type=float, default=0.0,            help='')
-    parser.add_argument('--ae_dir',         type=str,   default=None,            help='')
     # waveform loss weights (not used)
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
+    # encoding loss
+    parser.add_argument('--ae_dir',         type=str,   default=None,            help='')
 
-    parser.add_argument('--mfcc_w',         type=float, default=0.0,            help='')
     # weight schedule/annealing (ignores above values if specified)
-    parser.add_argument('--loss_sched',     type=str,   default=None,           help='')
     parser.add_argument('--load_model',     type=str,   default=None,           help='')
 
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
@@ -110,7 +106,7 @@ if __name__ == "__main__":
     model = EstimatorSynth(estimator, synth).to(device)
 
     # spectral loss (+waveform loss)
-    recon_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
+    sw_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
 
@@ -133,12 +129,7 @@ if __name__ == "__main__":
         print('no autoencoder for perceptual loss')
         ae_model = None
 
-    if args.loss_sched is not None:
-        loss_mult_sched = ParamScheduler(SCHEDULE_REGISTRY[args.loss_sched])
-    else:
-        # multipliers for each loss during training
-        mult = {'param': 1.0, 'recon': 1.0}
-        loss_mult_sched = ParamScheduler(mult) # always 1.0 for both
+    loss_w_sched = ParamScheduler(SCHEDULE_REGISTRY[args.loss_sched])
 
     # resume 
     if args.load_model:
@@ -157,8 +148,11 @@ if __name__ == "__main__":
         save_to_board(resume_epoch, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
         resyn_audio, _output = model(real_testbatch)
         save_to_board(resume_epoch, 'real', writer, real_testbatch['audio'], resyn_audio, 8)
-        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
+        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, ae_model=ae_model)
         writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], resume_epoch)
+        loss_weights = loss_w_sched.get_parameters(0)
+        for k, v in loss_weights.items():
+            writer.add_scalar('learn_p/'+k, v, 0)
         for k in valid_losses:
             writer.add_scalar('valid/'+k, valid_losses[k], resume_epoch)
     
@@ -166,28 +160,17 @@ if __name__ == "__main__":
     monitor='real/lsd'
 
     for i in tqdm.tqdm(range(resume_epoch+1, args.epochs+1)):
-        loss_mult = loss_mult_sched.get_parameters(i)
-        p_w = args.p_w * loss_mult['param']
-        if 'mfcc' in loss_mult:
-            mfcc_w = args.mfcc_w * loss_mult['mfcc']
-        else:
-            mfcc_w = 0
-        if 'enc' in loss_mult:
-            enc_w = args.enc_w * loss_mult['enc']
-        else:
-            enc_w = 0
-        train_loss = model.train_epoch(loader=syn_train_loader, recon_loss=recon_loss, optimizer=optimizer, device=device, rec_mult=loss_mult['recon'], param_w=p_w, mfcc_w=mfcc_w, enc_w=enc_w, ae_model=ae_model)
-        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, recon_loss=recon_loss, device=device, ae_model=ae_model)
-        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
-        writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], i)
-        writer.add_scalar('learn_p/enc_w', enc_w, i)
-        writer.add_scalar('learn_p/p_w', p_w, i)
-        writer.add_scalar('learn_p/recon_w', loss_mult['recon'], i)
-        writer.add_scalar('learn_p/mfcc_w', mfcc_w, i)
-        writer.add_scalar('train/loss', train_loss, i)
+        loss_weights = loss_w_sched.get_parameters(i)
+        train_loss = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, ae_model=ae_model)
+        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, ae_model=ae_model)
         scheduler.step()
-        for k in valid_losses:
-            writer.add_scalar('valid/'+k, valid_losses[k], i)
+        tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
+        writer.add_scalar('train/loss', train_loss, i)
+        writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], i)
+        for k, v in loss_weights.items():
+            writer.add_scalar('learn_p/'+k, v, i)
+        for k, v in valid_losses.items():
+            writer.add_scalar('valid/'+k, v, i)
         if valid_losses[monitor] < best_loss:
             best_loss = valid_losses[monitor]
             torch.save(model.state_dict(), os.path.join(model_dir, 'state_dict.pth'))

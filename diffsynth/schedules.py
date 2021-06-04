@@ -16,83 +16,75 @@ SCHEDULE_REGISTRY = {}
 switch_1 = {
     'unit': 'epochs',
     # parameter loss weight
-    'param': functools.partial(linear_anneal, end_value=0.0, start_value=1.0, start=50, warm=150),
-    # reconstruction (spectral) loss weight
-    'recon': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
-    'enc': 0.0,
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
+    # reconstruction (spectral/wave) loss weight
+    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'enc_w': 0.0,
 }
-
 SCHEDULE_REGISTRY['switch_1'] = switch_1
 
 # switch completely from param to spectral loss and embedding loss
 switch_e = {
     'unit': 'epochs',
     # parameter loss weight
-    'param': functools.partial(linear_anneal, end_value=0.0, start_value=1.0, start=50, warm=150),
-    # reconstruction (spectral) loss weight
-    'recon': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
+    # reconstruction (spectral/wave) loss weight
+    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
     # perceptual loss based on ae
-    'enc': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'enc_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
 }
-
 SCHEDULE_REGISTRY['switch_e'] = switch_e
 
 both_1 = {
     'unit': 'epochs',
-    'param': functools.partial(linear_anneal, end_value=0.5, start_value=1.0, start=50, warm=150),
-    'recon': functools.partial(linear_anneal, end_value=0.5, start_value=0.0, start=50, warm=150),
-    'enc': 0.0,
+    'param_w': functools.partial(linear_anneal, end_value=5.0, start_value=10.0, start=50, warm=150),
+    'sw_w': functools.partial(linear_anneal, end_value=0.5, start_value=0.0, start=50, warm=150),
 }
-
 SCHEDULE_REGISTRY['both_1'] = both_1
 
 only_param = {
     'unit': 'epochs',
-    'param': 1.0,
-    'recon': 0.0,
-    'enc': 0.0,
+    'param_w': 10.0,
 }
-
 SCHEDULE_REGISTRY['only_param'] = only_param
+
+only_sw = {
+    'unit': 'epochs',
+    'sw_w': 1.0,
+}
+SCHEDULE_REGISTRY['only_sw'] = only_sw
 
 only_enc = {
     'unit': 'epochs',
-    'param': 0.0,
-    'recon': 0.0,
-    'enc': 10.0,
+    'enc_w': 10.0,
 }
-
 SCHEDULE_REGISTRY['only_enc'] = only_enc
 
 switch_only_e = {
     'unit': 'epochs',
-    'param': functools.partial(linear_anneal, end_value=0.0, start_value=1.0, start=50, warm=150),
-    'recon': 0.0,
-    'enc': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
+    'enc_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
 }
-
 SCHEDULE_REGISTRY['switch_only_e'] = switch_only_e
 
 switch_mfcc = {
     'unit': 'epochs',
-    'param': functools.partial(linear_anneal, end_value=0.0, start_value=1.0, start=50, warm=150),
-    'recon': 0.0,
-    'enc': 0.0,
-    'mfcc': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=1.0, start=50, warm=150),
+    'mfcc_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
 }
-
 SCHEDULE_REGISTRY['switch_mfcc'] = switch_mfcc
 
+required_args = ['param_w', 'sw_w', 'enc_w', 'mfcc_w', 'lsd_w', 'cls_w']
 class ParamScheduler():
     def __init__(self, schedule_dict):
         self.sched = schedule_dict
-        if self.sched is not None:
-            self.unit = self.sched.pop('unit')
+        self.unit = self.sched.pop('unit')
+        for k in required_args:
+            if k not in self.sched:
+                self.sched[k] = 0.0
 
     def get_parameters(self, cur_epoch, dl_size=None):
         cur_param = {}
-        if self.sched is None:
-            return {}
         i = cur_epoch if self.unit=='epochs' else cur_epoch*dl_size
         for param_name, param_func in self.sched.items():
             cur_param[param_name] = param_func(i=i) if callable(param_func) else param_func
