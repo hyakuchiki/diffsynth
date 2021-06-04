@@ -27,17 +27,16 @@ class GradientReversal(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return GradientReversalFunction.apply(x, self.scale)
 
-class AdversarialEstimator(EstimatorSynth):
-    def __init__(self, encoder, synth, enc_dims, output_dims, grl_scale=1.0) -> None:
-        self.encoder = encoder # get feature, use MelEstimator or something
+class AdversarialEstimatorSynth(EstimatorSynth):
+    def __init__(self, estimator, synth, enc_dims, grl_scale=1.0) -> None:
+        # estimator: not really the estimator but encodes feature
+        super().__init__(estimator, synth)
         self.est_mlp = MLP(enc_dims, enc_dims)
-        self.est_out = nn.Linear(enc_dims, output_dims)
+        self.est_out = nn.Linear(enc_dims, synth.ext_param_size)
         # domain classifier
         self.cls_mlp = MLP(enc_dims, enc_dims)
         self.cls_out = nn.Linear(enc_dims, 1) # 2 domains
         self.grl = GradientReversal(scale=grl_scale)
-        self.synth = synth
-        self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20)
     
     def estimate_param(self, conditioning):
         """
@@ -47,15 +46,18 @@ class AdversarialEstimator(EstimatorSynth):
         Returns:
             torch.Tensor: estimated parameters in Tensor ranged 0~1
         """
-        conditioning = self.encoder(conditioning)
+        conditioning = self.estimator(conditioning)
         # not really the param but a feature
         z = torch.sigmoid(conditioning.pop('est_param'))
         conditioning['z'] = z
         est_param = torch.sigmoid(self.est_out(self.est_mlp(z)))
-        return est_param, conditioning, z
+        return est_param, conditioning
 
     def get_logit(self, conditioning):
-        est_param, conditioning, z = self.estimate_param(conditioning)
+        # dont use estimator or synthesizer just get logits
+        conditioning = self.estimator(conditioning)
+        # not really the param but a feature
+        z = torch.sigmoid(conditioning.pop('est_param'))
         logit = self.cls_out(self.cls_mlp(self.grl(z)))
         return logit
 
@@ -68,15 +70,21 @@ class AdversarialEstimator(EstimatorSynth):
             torch.Tensor: audio
         """
         audio_length = conditioning['audio'].shape[1]
-        est_param, conditioning, z = self.estimate_param(conditioning)
+        est_param, conditioning = self.estimate_param(conditioning)
         # synthesize
         params_dict = self.synth.fill_params(est_param, conditioning)
         resyn_audio, outputs = self.synth(params_dict, audio_length)
         # classify
-        logit = self.cls_out(self.cls_mlp(self.grl(z)))
+        logit = self.cls_out(self.cls_mlp(self.grl(conditioning['z'])))
         outputs['logit'] = logit
-        return resyn_audio, outputs, logit
+        return resyn_audio, outputs
     
+    def domain_loss(self, logit, domain_label):
+        # batch, n_frames, 1
+        n_frames = logit.shape[1]
+        domain_label = domain_label.unsqueeze(1).expand(-1, n_frames, -1)
+        return F.binary_cross_entropy_with_logits(logit, domain_label)
+
     def losses(self, target, output, **loss_args):
         #default values
         args = {'param_w': 1.0, 'sw_w':1.0, 'enc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'cls_w': 1.0, 'sw_loss': None, 'ae_model': None}
@@ -87,7 +95,7 @@ class AdversarialEstimator(EstimatorSynth):
         else:
             loss['param'] = 0.0
         if args['cls_w']>0.0:
-            loss['cls'] = args['cls_w'] * F.binary_cross_entropy_with_logits(output['logit'], target['domain'])
+            loss['cls'] = args['cls_w'] * self.domain_loss(output['logit'], target['domain'])
         else:
             loss['cls'] = 0
         return loss
@@ -102,17 +110,15 @@ class AdversarialEstimator(EstimatorSynth):
         for syn_dict, real_dict in zip(syn_loader, real_loader):
             # send data to device
             params = syn_dict.pop('params')
-            batch_size = params.shape[0]
-            n_frames = params.shape[1]
             params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
             syn_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in syn_dict.items()}
             syn_dict['params'] = params
-            syn_dict['domain'] = torch.zeros(batch_size, n_frames, 1).to(device)
-            if loss_args['rec_mult']+loss_args['enc_w']+loss_args['mfcc_w']+loss_args['lsd_w'] == 0:
+            if loss_args['sw_w']+loss_args['enc_w']+loss_args['mfcc_w']+loss_args['lsd_w'] == 0:
                 # do not render audio because reconstruction is unnecessary
                 synth_params, outputs = self.get_params(syn_dict)
-                cls_loss = F.binary_cross_entropy_with_logits(outputs['logit'], syn_dict['domain'])
-                batch_loss = loss_args['param_w']*self.param_loss(outputs, syn_dict['params']) + loss_args['cls_w']*cls_loss
+                logit = self.cls_out(self.cls_mlp(self.grl(outputs['z'])))
+                cls_loss = self.domain_loss(logit, syn_dict['domain'])
+                batch_loss = loss_args['param_w']*self.param_loss(synth_params, syn_dict['params']) + loss_args['cls_w']*cls_loss
             else:
                 # render audio
                 resyn_audio, outputs = self(syn_dict)
@@ -122,9 +128,8 @@ class AdversarialEstimator(EstimatorSynth):
             
             # only classification loss for real data
             real_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in real_dict.items()}
-            real_dict['domain'] = torch.ones(batch_size, n_frames, 1).to(device)
             logit = self.get_logit(real_dict)
-            cls_loss = F.binary_cross_entropy_with_logits(logit, real_dict['domain'])
+            cls_loss = self.domain_loss(logit, real_dict['domain'])
             batch_loss += loss_args['cls_w']*cls_loss
 
             # Perform backward

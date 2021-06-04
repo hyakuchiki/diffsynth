@@ -7,13 +7,14 @@ import torch
 from torch.utils.data import Subset, Dataset, DataLoader, random_split
 
 class WaveParamDataset(Dataset):
-    def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True):
+    def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True, domain=0):
         self.audio_dir = os.path.join(base_dir, 'audio')
         self.raw_files = sorted(glob.glob(os.path.join(self.audio_dir, '*.wav')))
         print('loaded {0} files'.format(len(self.raw_files)))
         self.length = length
         self.sample_rate = sample_rate
         self.params = params
+        self.domain = domain
         if params:
             self.param_dir = os.path.join(base_dir, 'param')
             assert os.path.exists(self.param_dir)
@@ -23,11 +24,12 @@ class WaveParamDataset(Dataset):
         raw_path = self.raw_files[idx]
         audio, _sr = librosa.load(raw_path, sr=self.sample_rate, duration=self.length)
         assert audio.shape[0] == self.length * self.sample_rate
+        domain = torch.ones(1) * self.domain
         if self.params:
             params = torch.load(self.param_files[idx])
-            return {'audio': audio, 'params': params}
+            return {'audio': audio, 'params': params, 'domain': domain}
         else:
-            return {'audio': audio}
+            return {'audio': audio, 'domain': domain}
 
     def __len__(self):
         return len(self.raw_files)

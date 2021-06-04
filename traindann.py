@@ -8,7 +8,7 @@ from torch.utils.data import Subset
 
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.estimator import MFCCEstimator, MelEstimator
-from diffsynth.model import EstimatorSynth
+from diffsynth.adversarial import AdversarialEstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board, get_loaders, WaveParamDataset
 from diffsynth.perceptual.ae import get_wave_ae
@@ -24,11 +24,13 @@ if __name__ == "__main__":
     parser.add_argument('loss_sched',     type=str, help='')
     parser.add_argument('--estimator',  type=str,   default='melgru', help='estimator name')
     parser.add_argument('--epochs',     type=int,   default=200,    help='directory of dataset')
-    parser.add_argument('--batch_size', type=int,   default=64,     help='directory of dataset')
-    parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
+    parser.add_argument('--feat_size',  type=int,   default=64,)
+    parser.add_argument('--grl_scale',  type=float, default=1.0)
+    parser.add_argument('--batch_size', type=int,   default=64,)
+    parser.add_argument('--lr',         type=float, default=1e-3,)
     parser.add_argument('--decay_rate',     type=float, default=1.0,            help='')
     # Multiscale fft params
-    parser.add_argument('--fft_sizes',        type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
+    parser.add_argument('--fft_sizes',        type=int,   default=[64, 128, 256, 512, 1024, 2048], nargs='*', help='')
     parser.add_argument('--hop_lengths',      type=int,   default=None, nargs='*', help='')
     parser.add_argument('--win_lengths',      type=int,   default=None, nargs='*', help='')
     # spectral loss weights
@@ -57,11 +59,7 @@ if __name__ == "__main__":
     device = 'cuda'
     # output dir
     os.makedirs(args.output_dir, exist_ok=True)
-    # audio_dir = os.path.join(args.output_dir, 'audio')
-    # plot_dir = os.path.join(args.output_dir, 'plot')
     model_dir = os.path.join(args.output_dir, 'model')
-    # os.makedirs(audio_dir, exist_ok=True)
-    # os.makedirs(plot_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
 
     writer = SummaryWriter(log_dir=args.output_dir, purge_step=0)
@@ -70,14 +68,14 @@ if __name__ == "__main__":
         json.dump(args.__dict__, f, indent=4)
 
     # load synthetic dataset
-    syn_dset = WaveParamDataset(args.syn_dataset, params=True, length=1.024)
+    syn_dset = WaveParamDataset(args.syn_dataset, params=True, domain=0)
     syn_dsets, syn_loaders = get_loaders(syn_dset, args.batch_size, splits=[.8, .1, .1], nbworkers=args.nbworkers)
     syn_dset_train, syn_dset_valid, syn_dset_test = syn_dsets
     syn_train_loader, syn_valid_loader, syn_test_loader = syn_loaders
  
     # load real (out-of-domain) dataset (nsynth, etc)
     # just for monitoring during train.py
-    real_dset = WaveParamDataset(args.real_dataset, params=False, length=1.024)
+    real_dset = WaveParamDataset(args.real_dataset, params=False, domain=1)
     # same size as syn_dset
     indices = np.random.choice(len(real_dset), len(syn_dset), replace=False)
     real_dset = Subset(real_dset, indices)
@@ -99,11 +97,11 @@ if __name__ == "__main__":
     # create model
     synth = construct_synths(args.synth)
     if args.estimator == 'mfccgru':
-        estimator = MFCCEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+        encoder = MFCCEstimator(args.feat_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     elif args.estimator == 'melgru':
-        estimator = MelEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+        encoder = MelEstimator(args.feat_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
     
-    model = EstimatorSynth(estimator, synth).to(device)
+    model = AdversarialEstimatorSynth(encoder, synth, args.feat_size, args.grl_scale).to(device)
 
     # spectral loss (+waveform loss)
     sw_loss = SpecWaveLoss(args.fft_sizes, args.hop_lengths, args.win_lengths, mag_w=args.mag_w, log_mag_w=args.log_mag_w, l1_w=args.l1_w, l2_w=args.l2_w, linf_w=args.linf_w, norm=None)  
@@ -161,7 +159,7 @@ if __name__ == "__main__":
 
     for i in tqdm.tqdm(range(resume_epoch+1, args.epochs+1)):
         loss_weights = loss_w_sched.get_parameters(i)
-        train_loss = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, ae_model=ae_model)
+        train_loss = model.train_adversarial(syn_train_loader, real_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, ae_model=ae_model)
         scheduler.step()
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
