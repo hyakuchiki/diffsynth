@@ -87,7 +87,7 @@ class AdversarialEstimatorSynth(EstimatorSynth):
 
     def losses(self, target, output, **loss_args):
         #default values
-        args = {'param_w': 1.0, 'sw_w':1.0, 'enc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'cls_w': 1.0, 'sw_loss': None, 'ae_model': None}
+        args = {'param_w': 1.0, 'sw_w':1.0, 'enc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'cls_w': 1.0, 'acc_w': 1.0, 'sw_loss': None, 'ae_model': None}
         args.update(loss_args)
         loss = self.audio_losses(target['audio'], output['output'], **args)
         if args['param_w'] > 0.0 and 'params' in target:
@@ -98,6 +98,12 @@ class AdversarialEstimatorSynth(EstimatorSynth):
             loss['cls'] = args['cls_w'] * self.domain_loss(output['logit'], target['domain'])
         else:
             loss['cls'] = 0
+        if args['acc_w']>0.0: # only for eval
+            n_frames = output['logit'].shape[1]
+            domain_label = target['domain'].unsqueeze(1).expand(-1, n_frames, -1)
+            loss['acc'] = (torch.sigmoid(output['logit'].detach()).round() == domain_label).sum()/output['logit'].numel()
+        else:
+            loss['acc'] = 0
         return loss
     
     def train_adversarial(self, syn_loader, real_loader, optimizer, device, loss_weights, sw_loss=None, ae_model=None, clip=1.0):
@@ -127,10 +133,11 @@ class AdversarialEstimatorSynth(EstimatorSynth):
                 batch_loss = sum(losses.values())
             
             # only classification loss for real data
-            real_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in real_dict.items()}
-            logit = self.get_logit(real_dict)
-            cls_loss = self.domain_loss(logit, real_dict['domain'])
-            batch_loss += loss_args['cls_w']*cls_loss
+            if loss_args['cls_w'] > 0.0:
+                real_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in real_dict.items()}
+                logit = self.get_logit(real_dict)
+                cls_loss = self.domain_loss(logit, real_dict['domain'])
+                batch_loss += loss_args['cls_w']*cls_loss
 
             # Perform backward
             optimizer.zero_grad()

@@ -10,7 +10,7 @@ def linear_anneal(i, end_value, start_value, start, warm):
     value = (end_value-start_value) * (float(l) / float(max(warm, l))) + start_value
     return value
 
-required_args = ['param_w', 'sw_w', 'enc_w', 'mfcc_w', 'lsd_w', 'cls_w']
+required_args = ['param_w', 'sw_w', 'enc_w', 'mfcc_w', 'lsd_w', 'cls_w', 'acc_w']
 class ParamScheduler():
     def __init__(self, schedule_dict):
         self.sched = schedule_dict
@@ -58,6 +58,13 @@ dann_1 = {
     'cls_w': 10.0,
 }
 SCHEDULE_REGISTRY['dann_1'] = dann_1
+
+dann_2 = {
+    'unit': 'epochs',
+    'param_w': 10.0,
+    'cls_w': 1.0,
+}
+SCHEDULE_REGISTRY['dann_2'] = dann_2
 
 # DOESNT WORK WELL
 

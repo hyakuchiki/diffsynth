@@ -98,7 +98,7 @@ class EstimatorSynth(nn.Module):
             audio_loss['mfcc'] = kwargs['mfcc_w']*F.l1_loss(self.mfcc(target_audio), self.mfcc(resyn_audio))
         else:
             audio_loss['mfcc'] = 0
-        if kwargs['lsd_w'] > 0.0:
+        if kwargs['lsd_w'] > 0.0: # only for eval
             audio_loss['lsd'] = kwargs['lsd_w']*compute_lsd(target_audio, resyn_audio)
         else:
             audio_loss['lsd'] = 0
