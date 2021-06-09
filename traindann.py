@@ -68,14 +68,14 @@ if __name__ == "__main__":
         json.dump(args.__dict__, f, indent=4)
 
     # load synthetic dataset
-    syn_dset = WaveParamDataset(args.syn_dataset, params=True, domain=0, length=1.024)
+    syn_dset = WaveParamDataset(args.syn_dataset, params=True, domain=0)
     syn_dsets, syn_loaders = get_loaders(syn_dset, args.batch_size, splits=[.8, .1, .1], nbworkers=args.nbworkers)
     syn_dset_train, syn_dset_valid, syn_dset_test = syn_dsets
     syn_train_loader, syn_valid_loader, syn_test_loader = syn_loaders
  
     # load real (out-of-domain) dataset (nsynth, etc)
     # just for monitoring during train.py
-    real_dset = WaveParamDataset(args.real_dataset, params=False, domain=1, length=1.024)
+    real_dset = WaveParamDataset(args.real_dataset, params=False, domain=1)
     # same size as syn_dset
     indices = np.random.choice(len(real_dset), len(syn_dset), replace=False)
     real_dset = Subset(real_dset, indices)
@@ -159,6 +159,7 @@ if __name__ == "__main__":
 
     for i in tqdm.tqdm(range(resume_epoch+1, args.epochs+1)):
         loss_weights = loss_w_sched.get_parameters(i)
+        model.set_grlscale(args.grl_scale*loss_weights['grl'])
         train_loss = model.train_adversarial(syn_train_loader, real_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, ae_model=ae_model)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, ae_model=ae_model)
         scheduler.step()

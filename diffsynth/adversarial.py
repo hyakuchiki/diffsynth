@@ -24,6 +24,9 @@ class GradientReversal(nn.Module):
         super(GradientReversal, self).__init__()
         self.scale = torch.tensor(scale)
  
+    def set_scale(self, scale):
+        self.scale = torch.tensor(scale).to(self.scale.device)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return GradientReversalFunction.apply(x, self.scale)
 
@@ -52,6 +55,9 @@ class AdversarialEstimatorSynth(EstimatorSynth):
         conditioning['z'] = z
         est_param = torch.sigmoid(self.est_out(self.est_mlp(z)))
         return est_param, conditioning
+
+    def set_grlscale(self, scale):
+        self.grl.set_scale(scale)
 
     def get_logit(self, conditioning):
         # dont use estimator or synthesizer just get logits
