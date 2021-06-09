@@ -10,7 +10,18 @@ def linear_anneal(i, end_value, start_value, start, warm):
     value = (end_value-start_value) * (float(l) / float(max(warm, l))) + start_value
     return value
 
-required_args = ['param_w', 'sw_w', 'enc_w', 'mfcc_w', 'lsd_w', 'cls_w', 'acc_w', 'grl']
+# loss weights and other parameters used during training
+required_args =    ['param_w', # parameter loss
+                    'sw_w', # spectral/waveform loss
+                    'enc_w', # ae encoding loss
+                    'mfcc_w', # MFCC L1 loss
+                    'lsd_w', # log spectral distortion
+                    'loud_w' # loudness L1 loss
+                    'cls_w', # classifier loss (domain adversarial)
+                    'acc_w', # classifier accuracy (not a loss)
+                    'grl' # grl gradient backwards scale
+                    ]
+
 class ParamScheduler():
     def __init__(self, schedule_dict):
         self.sched = schedule_dict
@@ -35,9 +46,28 @@ switch_1 = {
     'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
     # reconstruction (spectral/wave) loss weight
     'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
-    'enc_w': 0.0,
 }
 SCHEDULE_REGISTRY['switch_1'] = switch_1
+
+switch_ld = {
+    'unit': 'epochs',
+    # parameter loss weight
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
+    # reconstruction (spectral/wave) loss weight
+    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'loud_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+}
+SCHEDULE_REGISTRY['switch_ld'] = switch_ld
+
+switch_ld2 = {
+    'unit': 'epochs',
+    # parameter loss weight
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
+    # reconstruction (spectral/wave) loss weight
+    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'loud_w': functools.partial(linear_anneal, end_value=0.1, start_value=0.0, start=50, warm=150),
+}
+SCHEDULE_REGISTRY['switch_ld2'] = switch_ld2
 
 both_1 = {
     'unit': 'epochs',

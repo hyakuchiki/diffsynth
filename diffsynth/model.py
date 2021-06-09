@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import diffsynth.util as util
-from diffsynth.spectral import compute_lsd, Mfcc
+from diffsynth.spectral import compute_lsd, Mfcc, loudness_loss
 
 class LossLog():
     def __init__(self):
@@ -31,7 +31,7 @@ class EstimatorSynth(nn.Module):
         super().__init__()
         self.estimator = estimator
         self.synth = synth
-        self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20)
+        self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=16000)
 
     def param_loss(self, synth_output, param_dict):
         loss = 0
@@ -102,11 +102,15 @@ class EstimatorSynth(nn.Module):
             audio_loss['lsd'] = kwargs['lsd_w']*compute_lsd(target_audio, resyn_audio)
         else:
             audio_loss['lsd'] = 0
+        if kwargs['loud_w'] > 0.0:
+            audio_loss['loud'] = kwargs['loud_w'] * loudness_loss(resyn_audio, target_audio)
+        else:
+            audio_loss['loud'] = 0
         return audio_loss
         
     def losses(self, target, output, **loss_args):
         #default values
-        args = {'param_w': 1.0, 'sw_w':1.0, 'enc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'sw_loss': None, 'ae_model': None}
+        args = {'param_w': 1.0, 'sw_w':1.0, 'enc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'loud_w': 1.0, 'sw_loss': None, 'ae_model': None}
         args.update(loss_args)
         if args['param_w'] > 0.0 and 'params' in target:
             param_loss = args['param_w'] * self.param_loss(output, target['params'])

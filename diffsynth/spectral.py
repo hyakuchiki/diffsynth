@@ -223,6 +223,11 @@ def fix_f0(f0, diff_width=4, thres=0.4):
         fixed_f0 = fixed_f0.unsqueeze(1)
     return fixed_f0
 
+def loudness_loss(input_audio, target_audio, sr=16000):
+    input_l = compute_loudness(input_audio, sr)
+    target_l = compute_loudness(target_audio, sr)
+    return F.l1_loss(input_l, target_l, reduction='mean')
+
 # deprecated
 class SpectralLoss(nn.Module):
     def __init__(self, fft_sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=None, win_lengths=None, sample_rate=16000, mag_w=1.0, log_mag_w=1.0, loud_w=0.0):
@@ -270,8 +275,3 @@ class SpectralLoss(nn.Module):
             loss += self.loud_w * self.loss_func(input_l, target_l, loss_type, reduction)
         
         return loss
-
-def loudness_loss(input_audio, target_audio, sr=16000):
-    input_l = compute_loudness(input_audio, sr)
-    target_l = compute_loudness(target_audio, sr)
-    return F.l1_loss(input_l, target_l, reduction='mean')

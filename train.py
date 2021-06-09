@@ -18,32 +18,33 @@ from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('output_dir',   type=str,   help='')
-    parser.add_argument('syn_dataset',      type=str,   help='directory of synthetic dataset')
-    parser.add_argument('real_dataset',      type=str,   help='directory of real dataset')
+    parser.add_argument('syn_dataset',  type=str,   help='directory of synthetic dataset')
+    parser.add_argument('real_dataset', type=str,   help='directory of real dataset')
     parser.add_argument('synth',        type=str,   help='synth name')
-    parser.add_argument('loss_sched',     type=str, help='')
+    parser.add_argument('loss_sched',   type=str, help='')
     parser.add_argument('--estimator',  type=str,   default='melgru', help='estimator name')
     parser.add_argument('--epochs',     type=int,   default=200,    help='directory of dataset')
     parser.add_argument('--batch_size', type=int,   default=64,     help='directory of dataset')
     parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
-    parser.add_argument('--decay_rate',     type=float, default=1.0,            help='')
+    parser.add_argument('--decay_rate', type=float, default=1.0,help='')
+    parser.add_argument('--length',     type=float, default=4.0,    help='')
+    parser.add_argument('--sr',         type=int,   default=16000,  help='')
     # Multiscale fft params
-    parser.add_argument('--fft_sizes',        type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
-    parser.add_argument('--hop_lengths',      type=int,   default=None, nargs='*', help='')
-    parser.add_argument('--win_lengths',      type=int,   default=None, nargs='*', help='')
+    parser.add_argument('--fft_sizes',  type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
+    parser.add_argument('--hop_lengths',type=int,   default=None, nargs='*', help='')
+    parser.add_argument('--win_lengths',type=int,   default=None, nargs='*', help='')
     # spectral loss weights
-    parser.add_argument('--mag_w',          type=float, default=1.0,            help='')
-    parser.add_argument('--log_mag_w',      type=float, default=1.0,            help='')
+    parser.add_argument('--mag_w',      type=float, default=1.0,            help='')
+    parser.add_argument('--log_mag_w',  type=float, default=1.0,            help='')
     # waveform loss weights (not used)
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
     # encoding loss
     parser.add_argument('--ae_dir',         type=str,   default=None,            help='')
-
-    # weight schedule/annealing (ignores above values if specified)
+    # resume from trained checkpoint
     parser.add_argument('--load_model',     type=str,   default=None,           help='')
-
+    # add noise to input
     parser.add_argument('--noise_prob',     type=float, default=0.0,            help='')
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
 
@@ -70,14 +71,14 @@ if __name__ == "__main__":
         json.dump(args.__dict__, f, indent=4)
 
     # load synthetic dataset
-    syn_dset = WaveParamDataset(args.syn_dataset, params=True, length=4.0)
+    syn_dset = WaveParamDataset(args.syn_dataset, params=True, length=args.length, sample_rate=args.sr)
     syn_dsets, syn_loaders = get_loaders(syn_dset, args.batch_size, splits=[.8, .1, .1], nbworkers=args.nbworkers)
     syn_dset_train, syn_dset_valid, syn_dset_test = syn_dsets
     syn_train_loader, syn_valid_loader, syn_test_loader = syn_loaders
  
     # load real (out-of-domain) dataset (nsynth, etc)
     # just for monitoring during train.py
-    real_dset = WaveParamDataset(args.real_dataset, params=False, length=4.0)
+    real_dset = WaveParamDataset(args.real_dataset, params=False, length=args.length, sample_rate=args.sr)
     # same size as syn_dset
     indices = np.random.choice(len(real_dset), len(syn_dset), replace=False)
     real_dset = Subset(real_dset, indices)
@@ -97,11 +98,11 @@ if __name__ == "__main__":
     torch.save([syn_dset_train, syn_dset_valid, syn_dset_test, real_dset_train, real_dset_valid, real_dset_test], os.path.join(args.output_dir, 'datasets.pt'))
 
     # create model
-    synth = construct_synths(args.synth)
+    synth = construct_synths(args.synth, n_samples=args.sr*args.length)
     if args.estimator == 'mfccgru':
-        estimator = MFCCEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+        estimator = MFCCEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag, sample_rate=args.sr).to(device)
     elif args.estimator == 'melgru':
-        estimator = MelEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag).to(device)
+        estimator = MelEstimator(synth.ext_param_size, noise_prob=args.noise_prob, noise_mag=args.noise_mag, sample_rate=args.sr).to(device)
     
     model = EstimatorSynth(estimator, synth).to(device)
 
@@ -133,7 +134,7 @@ if __name__ == "__main__":
 
     # resume 
     if args.load_model:
-        model.load_state_dict(torch.load(args.load_model))
+        model.load_state_dict(torch.load(args.load_model), strict=False)
         resume_epoch = int(args.load_model[-7:-4]) # *_000.pth
         print('resuming from {0}th epoch'.format(resume_epoch))
         for i in range(1, resume_epoch+1):
