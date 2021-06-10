@@ -25,6 +25,13 @@ def construct_synths(name, n_samples=64000, sr=16000):
         ]
         static_params=['FRQ_M', 'FRQ_C']
         fixed_params = {}
+    elif name == 'fm2_half':
+        fmosc = FM2(n_samples=n_samples, sample_rate=sr, name='fm2')
+        dag = [
+            (fmosc, {'mod_amp': 'AMP_M', 'car_amp': 'AMP_C', 'mod_freq': 'FRQ_M', 'car_freq': 'FRQ_C'})
+        ]
+        static_params=['FRQ_M']
+        fixed_params = {'FRQ_C': torch.ones(1)*440}
     elif name == 'fm2_free_env':
         fmosc = FM2(n_samples=n_samples, sample_rate=sr, name='fm2')
         envm = ADSREnvelope(name='envm')
