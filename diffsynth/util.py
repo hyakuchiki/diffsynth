@@ -297,7 +297,7 @@ def frame_signal(signal, frame_size):
     frames = torch.split(signal.unsqueeze(1), frame_size, dim=-1)
     return torch.cat(frames, dim=1)
 
-def slice_windows(signal, frame_size, hop_size):
+def slice_windows(signal, frame_size, hop_size, window=None):
     """
     slice signal into overlapping frames
     pads end if (l_x - frame_size) % hop_size != 0
@@ -306,7 +306,7 @@ def slice_windows(signal, frame_size, hop_size):
         frame_size (int): size of frames
         hop_size (int): size between frames
     Returns:
-        [batch, frame_size, n_frames]
+        [batch, n_frames, frame_size]
     """
     _batch_dim, l_x = signal.shape
     remainder = (l_x - frame_size) % hop_size
@@ -314,8 +314,53 @@ def slice_windows(signal, frame_size, hop_size):
     signal = F.pad(signal, (0, pad), 'constant')
     signal = signal[:, None, None, :] # adding dummy channel/height
     frames = F.unfold(signal, (1, frame_size), stride=(1, hop_size)) #batch, frame_size, n_frames
-    win = torch.hamming_window(frame_size)[None, :, None].to(frames.device)
-    return frames * win
+    frames = frames.permute(0, 2, 1) # batch, n_frames, frame_size
+    if window == 'hamming':
+        win = torch.hamming_window(frame_size)[None, None, :].to(frames.device)
+        frames = frames * win
+    return frames
+
+def variable_delay(phase, audio, buf_size):
+    """delay with variable length
+
+    Args:
+        phase (torch.Tensor): 0~1 0: no delay 1: delay=max_length (batch, n_samples)
+        audio (torch.Tensor): audio signal (batch, n_samples)
+        buf_size (int)    : buffer size in samples = max delay length
+
+    Returns:
+        torch.Tensor: delayed audio (batch, n_samples)
+    """
+    batch_size, n_samples = audio.shape
+    audio_4d = audio[:, None, None, :] # (B, C=1, H=1, W=n_samples)
+    delay_ratio = buf_size*2/n_samples
+    grid_x = torch.linspace(-1, 1, n_samples, device=audio.device)[None, :]
+    grid_x = grid_x - delay_ratio + delay_ratio*phase # B, W=n_samples
+    grid_x = grid_x[:, None, :, None] # B, H=1, W=n_samples, 1
+    grid_y = torch.zeros(batch_size, 1, n_samples, 1, device=audio.device) # # B, H=1, W=n_samples, 1
+    grid = torch.cat([grid_x, grid_y], dim=-1)
+    output = torch.nn.functional.grid_sample(audio_4d, grid, align_corners=True)
+    # shape: (B, C=1, H=1, W)
+    output = output.squeeze(2).squeeze(1)
+    return output
+
+    # pad_sig = torch.nn.functional.pad(audio, (buf_size-1, 0))
+    # assert orig_len % proc_len == 0
+    # if proc_len is None:
+    #     frames = slice_windows(pad_sig, buf_size, 1) # (b, n_samples, buf_size)
+    #     return linear_lookup(phase, frames)
+    # else:
+    #     output = []
+    #     sig_frames = slice_windows(pad_sig, proc_len+buf_size-1, proc_len)
+    #     n_frames = sig_frames.shape[1]
+    #     for i in range(n_frames):
+    #         sig = sig_frames[:, i] # (batch, proc_len+buf_size-1)
+    #         ph = phase[:, i*proc_len:(i+1)*proc_len]
+    #         ll_frames = slice_windows(sig, buf_size, 1) # (batch, proc_len, max_length)
+    #         output.append(linear_lookup(ph, ll_frames)) # (batch, proc_len)
+    #     output = torch.cat(output, dim=-1)
+    #     output = output[:, :orig_len]
+    #     return output
 
 def overlap_and_add(signal, frame_step):
     """overlap-add signals ported from tf.signals
