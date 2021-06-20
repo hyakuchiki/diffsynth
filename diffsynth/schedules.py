@@ -16,7 +16,7 @@ required_args =    ['param_w', # parameter loss
                     'enc_w', # ae encoding loss
                     'mfcc_w', # MFCC L1 loss
                     'lsd_w', # log spectral distortion
-                    'loud_w' # loudness L1 loss
+                    'loud_w', # loudness L1 loss
                     'cls_w', # classifier loss (domain adversarial)
                     'acc_w', # classifier accuracy (not a loss)
                     'grl' # grl gradient backwards scale
@@ -49,26 +49,6 @@ switch_1 = {
 }
 SCHEDULE_REGISTRY['switch_1'] = switch_1
 
-switch_ld = {
-    'unit': 'epochs',
-    # parameter loss weight
-    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
-    # reconstruction (spectral/wave) loss weight
-    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
-    'loud_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
-}
-SCHEDULE_REGISTRY['switch_ld'] = switch_ld
-
-switch_ld2 = {
-    'unit': 'epochs',
-    # parameter loss weight
-    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
-    # reconstruction (spectral/wave) loss weight
-    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
-    'loud_w': functools.partial(linear_anneal, end_value=0.1, start_value=0.0, start=50, warm=150),
-}
-SCHEDULE_REGISTRY['switch_ld2'] = switch_ld2
-
 both_1 = {
     'unit': 'epochs',
     'param_w': functools.partial(linear_anneal, end_value=5.0, start_value=10.0, start=50, warm=150),
@@ -81,6 +61,12 @@ only_param = {
     'param_w': 10.0,
 }
 SCHEDULE_REGISTRY['only_param'] = only_param
+
+only_sw= {
+    'unit': 'epochs',
+    'sw_w': 1.0,
+}
+SCHEDULE_REGISTRY['only_sw'] = only_sw
 
 dann_1 = {
     'unit': 'epochs',
@@ -145,3 +131,23 @@ switch_mfcc = {
     'mfcc_w': functools.partial(linear_anneal, end_value=10.0, start_value=0.0, start=50, warm=150),
 }
 SCHEDULE_REGISTRY['switch_mfcc'] = switch_mfcc
+
+switch_ld = {
+    'unit': 'epochs',
+    # parameter loss weight
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
+    # reconstruction (spectral/wave) loss weight
+    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'loud_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+}
+SCHEDULE_REGISTRY['switch_ld'] = switch_ld
+
+switch_ld2 = {
+    'unit': 'epochs',
+    # parameter loss weight
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
+    # reconstruction (spectral/wave) loss weight
+    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
+    'loud_w': functools.partial(linear_anneal, end_value=0.1, start_value=0.0, start=50, warm=150),
+}
+SCHEDULE_REGISTRY['switch_ld2'] = switch_ld2
