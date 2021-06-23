@@ -8,7 +8,7 @@ from diffsynth.synthesizer import Synthesizer
 from diffsynth.modules.frequency import FreqKnobsCoarse, FreqMultiplier
 from diffsynth.modules.filter import SVFilter
 from diffsynth.modules.harmor import Harmor
-from diffsynth.modules.delay import ChorusFlanger
+from diffsynth.modules.delay import ModulatedDelay
 
 def construct_synths(name, n_samples=64000, sr=16000):
     static_params = []
@@ -103,13 +103,13 @@ def construct_synths(name, n_samples=64000, sr=16000):
         static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT']
     elif name == 'harmor_cf':
         harmor = Harmor(n_samples=n_samples, sample_rate=sr, name='harmor', sep_amp=True, n_oscs=2)
-        cf = ChorusFlanger(name='cf', sr=sr)
+        md = ModulatedDelay(name='md', sr=sr)
         dag = [
             (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'MULT', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'}),
-            (cf, {'audio': 'harmor', 'delay_ms': 'CF_DELAY', 'rate': 'CF_RATE', 'depth': 'CF_DEPTH', 'mix': 'CF_MIX'})
+            (md, {'audio': 'harmor', 'delay_ms': 'MD_DELAY', 'phase': 'MD_PHASE', 'depth': 'MD_DEPTH', 'mix': 'MD_MIX'})
             ]
         fixed_params = {}
-        static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT', 'CF_DELAY', 'CF_RATE', 'CF_DEPTH', 'CF_MIX']
+        static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT', 'MD_DELAY', 'MD_DEPTH', 'MD_MIX']
     synth = Synthesizer(dag, fixed_params=fixed_params, static_params=static_params)
 
     return synth

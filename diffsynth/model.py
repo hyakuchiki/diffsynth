@@ -128,10 +128,13 @@ class EstimatorSynth(nn.Module):
         loss_args['sw_loss'] = sw_loss
         for data_dict in loader:
             # send data to device
-            params = data_dict.pop('params')
-            params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
-            data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
-            data_dict['params'] = params
+            if 'params' in data_dict:
+                params = data_dict.pop('params')
+                params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
+                data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
+                data_dict['params'] = params
+            else:
+                data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
 
             if loss_args['sw_w']+loss_args['enc_w']+loss_args['mfcc_w']+loss_args['lsd_w'] == 0:
                 # do not render audio because reconstruction is unnecessary

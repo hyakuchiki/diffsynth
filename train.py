@@ -30,7 +30,7 @@ if __name__ == "__main__":
     parser.add_argument('--length',     type=float, default=4.0,    help='')
     parser.add_argument('--sr',         type=int,   default=16000,  help='')
     # Multiscale fft params
-    parser.add_argument('--fft_sizes',  type=int,   default=[32, 64, 128, 256, 512, 1024], nargs='*', help='')
+    parser.add_argument('--fft_sizes',  type=int,   default=[64, 128, 256, 512, 1024, 2048], nargs='*', help='')
     parser.add_argument('--hop_lengths',type=int,   default=None, nargs='*', help='')
     parser.add_argument('--win_lengths',type=int,   default=None, nargs='*', help='')
     # spectral loss weights

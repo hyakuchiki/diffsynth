@@ -5,6 +5,48 @@ import diffsynth.util as util
 import numpy as np
 import math
 
+class ModulatedDelay(Processor):
+    """
+    Use with LFO to create flanger/vibrato/chorus
+    """
+    def __init__(self, name='chorus', sr=16000):
+        super().__init__(name)
+        self.sr = sr
+        self.param_desc = {
+            'delay_ms': {'size': 1,     'range': (1, 10.0),     'type': 'sigmoid'}, #ms
+            'phase':    {'size': 1,     'range': (-1.0, 1.0),   'type': 'sigmoid'},
+            'depth':    {'size': 1,     'range': (0, 0.25),     'type': 'sigmoid'},
+            'mix':      {'size': 1,     'range': (0, 1.0),      'type': 'sigmoid'}
+            }
+
+    def forward(self, audio, delay_ms, phase, depth, mix):
+        """pass audio through chorus/flanger
+        Args:
+            audio (torch.Tensor): [batch_size, n_samples]
+            # static parameters
+            delay_ms (torch.Tensor): Average delay in ms [batch_size, 1, 1]
+            phase (torch.Tensor): -1->delay_ms*(1-depth), 1->delay_ms*(1+depth) [batch_size, n_frames, 1]
+            depth (torch.Tensor): Lfo depth relative to delay_ms (0~1) [batch_size, 1, 1]
+            mix (torch.Tensor): wet/dry ratio (0: all dry, 1: all wet) [batch_size, n_samples or 1, 1]
+
+        Returns:
+            [torch.Tensor]: Mixed audio. Shape [batch, n_samples]
+        """
+        # delay: delay_ms*(1-depth) <-> delay_ms*(1+depth)
+
+        delay_ms = delay_ms.squeeze(-1)
+        depth = depth.squeeze(-1)
+        mix = mix.squeeze(-1)
+        phase = util.resample_frames(phase, audio.shape[1])
+        phase = phase.squeeze(-1)
+
+        max_delay = self.param_desc['delay_ms']['range'][1] * 2 / 1000.0 * self.sr # samples
+        delay_center = delay_ms / 1000.0 * self.sr # samples
+        delay_value = phase * (depth * delay_center) + delay_center
+        delay_phase = delay_value / max_delay # 0-> no delay 1: max_delay
+        delayed = util.variable_delay(delay_phase, audio, buf_size=math.ceil(max_delay))
+        return mix * delayed + (1-mix)*audio
+
 class ChorusFlanger(Processor):
     """
     LFO modulated delay
