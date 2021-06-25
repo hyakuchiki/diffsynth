@@ -90,7 +90,7 @@ def compute_lsd(orig_audio, resyn_audio):
     window = torch.hann_window(1024).to(orig_audio.device)
     orig_power_s = spectrogram(orig_audio, 1024, 256, window=window).detach()
     resyn_power_s = spectrogram(resyn_audio, 1024, 256, window=window).detach()
-    lsd = torch.sqrt(((10 * (torch.log10(resyn_power_s+1e-5)-torch.log10(orig_power_s+1e-5)))**2).sum()) / orig_power_s.shape[-1]
+    lsd = torch.sqrt(((10 * (torch.log10(resyn_power_s+1e-5)-torch.log10(orig_power_s+1e-5)))**2).sum(dim=(1,2))) / orig_power_s.shape[-1]
     lsd = lsd.mean()
     return lsd
 

@@ -8,7 +8,7 @@ from diffsynth.synthesizer import Synthesizer
 from diffsynth.modules.frequency import FreqKnobsCoarse, FreqMultiplier
 from diffsynth.modules.filter import SVFilter
 from diffsynth.modules.harmor import Harmor
-from diffsynth.modules.delay import ModulatedDelay
+from diffsynth.modules.delay import ModulatedDelay, ChorusFlanger
 
 def construct_synths(name, n_samples=64000, sr=16000):
     static_params = []
@@ -110,6 +110,15 @@ def construct_synths(name, n_samples=64000, sr=16000):
             ]
         fixed_params = {}
         static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT', 'MD_DELAY', 'MD_DEPTH', 'MD_MIX']
+    elif name == 'harmor_cffixed':
+        harmor = Harmor(n_samples=n_samples, sample_rate=sr, name='harmor', sep_amp=True, n_oscs=2)
+        cf = ChorusFlanger(name='cf', sr=sr, delay_range=(1.0, 40.0))
+        dag = [
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'MULT', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'}),
+            (cf, {'audio': 'harmor', 'delay_ms': 'CF_DELAY', 'rate': 'CF_RATE', 'depth': 'CF_DEPTH', 'mix': 'CF_MIX'})
+            ]
+        fixed_params = {'CF_RATE': torch.ones(1), 'CF_DEPTH': torch.ones(1)*0.1}
+        static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT', 'CF_DELAY', 'CF_MIX', 'CF_RATE', 'CF_DEPTH']
     synth = Synthesizer(dag, fixed_params=fixed_params, static_params=static_params)
 
     return synth

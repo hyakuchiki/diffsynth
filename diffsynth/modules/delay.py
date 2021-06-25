@@ -56,11 +56,11 @@ class ChorusFlanger(Processor):
     Chorus: 5ms~
     """
     
-    def __init__(self, name='chorus', sr=16000):
+    def __init__(self, name='chorus', sr=16000, delay_range=(1.0, 40.0)):
         super().__init__(name)
         self.sr = sr
         self.param_desc = {
-            'delay_ms':    {'size': 1, 'range': (1, 10.0), 'type': 'sigmoid'}, #ms
+            'delay_ms':    {'size': 1, 'range': delay_range, 'type': 'sigmoid'}, #ms
             'rate':     {'size': 1, 'range': (0.1, 10.0), 'type': 'sigmoid'}, #Hz
             'depth':    {'size': 1, 'range': (0, 0.25), 'type': 'sigmoid'},
             'mix':      {'size': 1, 'range': (0, 0.5), 'type': 'sigmoid'}
