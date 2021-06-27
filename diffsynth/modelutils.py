@@ -9,6 +9,7 @@ from diffsynth.modules.frequency import FreqKnobsCoarse, FreqMultiplier
 from diffsynth.modules.filter import SVFilter
 from diffsynth.modules.harmor import Harmor
 from diffsynth.modules.delay import ModulatedDelay, ChorusFlanger
+from diffsynth.modules.reverb import DecayReverb
 
 def construct_synths(name, n_samples=64000, sr=16000):
     static_params = []
@@ -119,6 +120,15 @@ def construct_synths(name, n_samples=64000, sr=16000):
             ]
         fixed_params = {'CF_RATE': torch.ones(1), 'CF_DEPTH': torch.ones(1)*0.1}
         static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT', 'CF_DELAY', 'CF_MIX', 'CF_RATE', 'CF_DEPTH']
+    elif name == 'harmor_rev':
+        harmor = Harmor(n_samples=n_samples, sample_rate=sr, name='harmor', sep_amp=True, n_oscs=2)
+        reverb = DecayReverb(name='reverb', ir_length=16000)
+        dag = [
+            (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'MULT', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'}),
+            (reverb, {'audio': 'harmor', 'gain': 'RE_GAIN', 'decay': 'RE_DECAY'})
+            ]
+        fixed_params = {}
+        static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT', 'RE_GAIN', 'RE_DECAY']
     synth = Synthesizer(dag, fixed_params=fixed_params, static_params=static_params)
 
     return synth

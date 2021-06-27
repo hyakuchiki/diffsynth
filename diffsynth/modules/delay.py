@@ -13,6 +13,7 @@ class ModulatedDelay(Processor):
         super().__init__(name)
         self.sr = sr
         self.param_desc = {
+            'audio':    {'size': 1,     'range': (-1, 1),       'type': 'raw'},
             'delay_ms': {'size': 1,     'range': (1, 10.0),     'type': 'sigmoid'}, #ms
             'phase':    {'size': 1,     'range': (-1.0, 1.0),   'type': 'sigmoid'},
             'depth':    {'size': 1,     'range': (0, 0.25),     'type': 'sigmoid'},
