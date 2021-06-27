@@ -474,14 +474,8 @@ def crop_and_compensate_delay(audio, audio_size, ir_size, padding, delay_compens
     return audio[:, start:-end]
 
 def fir_filter(audio, freq_response, filter_size):
-    batch_size = audio.shape[0]
-    n_ir_frames = freq_response.shape[1]
-
-    # Reshape filter coefficients to complex form
-    freq_response = freq_response.unsqueeze(-1).expand([batch_size, n_ir_frames, filter_size // 2 + 1, 2]).contiguous()
-    freq_response[:, :, :, 1] = 0 # phase = 0
     # get IR
-    h = torch.irfft(freq_response, 1, signal_sizes=(filter_size,))
+    h = torch.fft.irfft(freq_response, n=filter_size, dim=-1)
 
     # Compute filter windowed impulse response
     # window_size == filter_size
@@ -559,21 +553,17 @@ def fft_convolve(audio, impulse_response, padding = 'same', delay_compensation =
 
     # Pad and FFT the audio and impulse responses.
     fft_size = get_fft_size(frame_size, ir_size)
-    audio_frames = nn.functional.pad(audio_frames, (0,fft_size-frame_size), 'constant', 0)
-    impulse_response = nn.functional.pad(impulse_response, (0,fft_size-ir_size), 'constant', 0)
 
-    S = torch.rfft(audio_frames, 1)
-    H = torch.rfft(impulse_response, 1)
+    S = torch.fft.rfft(audio_frames, n=fft_size, dim=-1) # zeropadded
+    H = torch.fft.rfft(impulse_response, n=fft_size, dim=-1)
 
     # Multiply the FFTs (same as convolution in time).
     # Filter the original audio
-    audio_ir_fft          = torch.zeros_like(H)
-    audio_ir_fft[:,:,:,0] = H[:,:,:,0] * S[:,:,:,0] - H[:,:,:,1] * S[:,:,:,1]
-    audio_ir_fft[:,:,:,1] = H[:,:,:,0] * S[:,:,:,1] + H[:,:,:,1] * S[:,:,:,0]
+    audio_ir_fft = S*H
 
     # Take the IFFT to resynthesize audio.
     # batch_size, n_frames, fft_size
-    audio_frames_out = torch.irfft(audio_ir_fft, 1, signal_sizes=(fft_size,))
+    audio_frames_out = torch.fft.irfft(audio_ir_fft, n=fft_size, dim=-1)
     audio_out = overlap_and_add(audio_frames_out, frame_size)
 
     # Crop and shift the output audio.
