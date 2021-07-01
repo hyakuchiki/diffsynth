@@ -13,7 +13,7 @@ def linear_anneal(i, end_value, start_value, start, warm):
 # loss weights and other parameters used during training
 required_args =    ['param_w', # parameter loss
                     'sw_w', # spectral/waveform loss
-                    'enc_w', # ae encoding loss
+                    'perc_w', # perceptual loss
                     'mfcc_w', # MFCC L1 loss
                     'lsd_w', # log spectral distortion
                     'loud_w', # loudness L1 loss

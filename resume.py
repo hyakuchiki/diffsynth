@@ -11,8 +11,6 @@ from diffsynth.model import EstimatorSynth
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
-from diffsynth.perceptual.ae import get_wave_ae
-from diffsynth.perceptual.melae import get_mel_ae
 from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
 
 if __name__ == "__main__":

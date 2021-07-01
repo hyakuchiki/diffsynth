@@ -11,8 +11,6 @@ from diffsynth.estimator import MFCCEstimator, MelEstimator
 from diffsynth.model import EstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board, get_loaders, WaveParamDataset
-from diffsynth.perceptual.ae import get_wave_ae
-from diffsynth.perceptual.melae import get_mel_ae
 from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
 
 if __name__ == "__main__":
@@ -40,8 +38,6 @@ if __name__ == "__main__":
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
-    # encoding loss
-    parser.add_argument('--ae_dir',         type=str,   default=None,            help='')
     # resume from trained checkpoint
     parser.add_argument('--load_model',     type=str,   default=None,           help='')
     # add noise to input
@@ -111,25 +107,6 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
 
-    # encoding (perceptual) loss
-    if args.ae_dir:
-        args_file = os.path.join(args.ae_dir, 'args.txt')
-        with open(args_file) as f:
-            ae_args = json.load(f)
-            ae_args = SimpleNamespace(**ae_args)
-        ## construct ae model
-        if ae_args.waveae:
-            ae_model = get_wave_ae(ae_args.z_steps, ae_args.encoder_dims, ae_args.latent_size, ae_args.res_depth, ae_args.channels, ae_args.dil_rate)
-        else:
-            ae_model = get_mel_ae(ae_args.encoder_dims, ae_args.latent_size, syn_testbatch['audio'].shape[-1])
-        ae_model.load_state_dict(torch.load(os.path.join(args.ae_dir, 'model/state_dict.pth')))
-        ae_model = ae_model.eval().to(device)
-        for param in ae_model.parameters():
-            param.requires_grad = False
-    else:
-        print('no autoencoder for perceptual loss')
-        ae_model = None
-
     loss_w_sched = ParamScheduler(SCHEDULE_REGISTRY[args.loss_sched])
 
     # resume 
@@ -142,6 +119,9 @@ if __name__ == "__main__":
     else:
         resume_epoch = 0
 
+    # perceptual model (WIP)
+    perc_model = None
+
     # initial state (epoch=0)
     with torch.no_grad():
         model.eval()
@@ -149,7 +129,7 @@ if __name__ == "__main__":
         save_to_board(resume_epoch, 'syn', writer, syn_testbatch['audio'], resyn_audio, 8)
         resyn_audio, _output = model(real_testbatch)
         save_to_board(resume_epoch, 'real', writer, real_testbatch['audio'], resyn_audio, 8)
-        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, ae_model=ae_model)
+        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, perc_model=perc_model)
         writer.add_scalar('learn_p/lr', optimizer.param_groups[0]['lr'], resume_epoch)
         loss_weights = loss_w_sched.get_parameters(0)
         for k, v in loss_weights.items():
@@ -162,8 +142,8 @@ if __name__ == "__main__":
 
     for i in tqdm.tqdm(range(resume_epoch+1, args.epochs+1)):
         loss_weights = loss_w_sched.get_parameters(i)
-        train_loss = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, ae_model=ae_model)
-        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, ae_model=ae_model)
+        train_loss = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, perc_model=perc_model)
+        valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, perc_model=perc_model)
         scheduler.step()
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))
         writer.add_scalar('train/loss', train_loss, i)

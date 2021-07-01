@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from diffsynth.layers import Resnet1D, MLP
+from diffsynth.perceptual.perceptual import Perceptual
 
 frame_setting_stride = {
     # n_downsample, stride
@@ -182,7 +183,7 @@ class RNNDilatedConvDecoder(DilatedConvDecoder):
         resyn_audio = resyn_audio.squeeze(1)
         return resyn_audio
 
-class AE(nn.Module):
+class PerceptualAE(Perceptual):
     
     def __init__(self, encoder, decoder, encoder_dims, latent_dims):
         super().__init__()
@@ -213,7 +214,7 @@ class AE(nn.Module):
         z_tilde = self.map_latent(encoder_output)
         return z_tilde
 
-    def encoding_loss(self, target_audio, input_audio):
+    def perceptual_loss(self, target_audio, input_audio):
         batch_size = input_audio.shape[0]
         audios = torch.cat([input_audio, target_audio], dim=0)
         encodings = self.encode_audio(audios)

@@ -81,7 +81,7 @@ class EstimatorSynth(nn.Module):
         return synth_params, conditioning
 
     def audio_losses(self, target_audio, resyn_audio, **kwargs):
-        ae_model = kwargs['ae_model']
+        perc_model = kwargs['perc_model']
         sw_loss = kwargs['sw_loss']
         audio_loss={}
         if kwargs['sw_w'] > 0.0 and sw_loss is not None:
@@ -90,10 +90,10 @@ class EstimatorSynth(nn.Module):
             audio_loss['spec'], audio_loss['wave'] = kwargs['sw_w'] * spec_loss, kwargs['sw_w'] * wave_loss
         else:
             audio_loss['spec'], audio_loss['wave'] = (0, 0)
-        if kwargs['enc_w'] > 0.0 and ae_model is not None:
-            audio_loss['enc'] = kwargs['enc_w']*ae_model.encoding_loss(target_audio, resyn_audio)
+        if kwargs['perc_w'] > 0.0 and perc_model is not None:
+            audio_loss['perc'] = kwargs['perc_w']*perc_model.perceptual_loss(target_audio, resyn_audio)
         else:
-            audio_loss['enc'] = 0
+            audio_loss['perc'] = 0
         if kwargs['mfcc_w'] > 0.0:
             audio_loss['mfcc'] = kwargs['mfcc_w']*F.l1_loss(self.mfcc(target_audio), self.mfcc(resyn_audio))
         else:
@@ -110,7 +110,7 @@ class EstimatorSynth(nn.Module):
         
     def losses(self, target, output, **loss_args):
         #default values
-        args = {'param_w': 1.0, 'sw_w':1.0, 'enc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'loud_w': 1.0, 'sw_loss': None, 'ae_model': None}
+        args = {'param_w': 1.0, 'sw_w':1.0, 'perc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'loud_w': 1.0, 'sw_loss': None, 'ae_model': None}
         args.update(loss_args)
         if args['param_w'] > 0.0 and 'params' in target:
             param_loss = args['param_w'] * self.param_loss(output, target['params'])
@@ -120,11 +120,11 @@ class EstimatorSynth(nn.Module):
         loss['param'] = param_loss
         return loss
 
-    def train_epoch(self, loader, optimizer, device, loss_weights, sw_loss=None, ae_model=None, clip=1.0):
+    def train_epoch(self, loader, optimizer, device, loss_weights, sw_loss=None, perc_model=None, clip=1.0):
         self.train()
         sum_loss = 0
         loss_args = loss_weights.copy()
-        loss_args['ae_model'] = ae_model
+        loss_args['perc_model'] = perc_model
         loss_args['sw_loss'] = sw_loss
         for data_dict in loader:
             # send data to device
@@ -136,7 +136,7 @@ class EstimatorSynth(nn.Module):
             else:
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
 
-            if loss_args['sw_w']+loss_args['enc_w']+loss_args['mfcc_w']+loss_args['lsd_w'] == 0:
+            if loss_args['sw_w']+loss_args['perc_w']+loss_args['mfcc_w']+loss_args['lsd_w'] == 0:
                 # do not render audio because reconstruction is unnecessary
                 synth_params, _conditioning = self.get_params(data_dict)
                 # Parameter loss
@@ -156,7 +156,7 @@ class EstimatorSynth(nn.Module):
         sum_loss /= len(loader)
         return sum_loss
 
-    def eval_epoch(self, syn_loader, real_loader, device, sw_loss=None, ae_model=None,):
+    def eval_epoch(self, syn_loader, real_loader, device, sw_loss=None, perc_model=None,):
         self.eval()
         # in-domain
         syn_result = LossLog()
@@ -169,7 +169,7 @@ class EstimatorSynth(nn.Module):
 
                 resyn_audio, outputs = self(data_dict)
                 # Reconstruction loss
-                losses = self.losses(data_dict, outputs, sw_loss=sw_loss, ae_model=ae_model)
+                losses = self.losses(data_dict, outputs, sw_loss=sw_loss, perc_model=perc_model)
                 syn_result.update(losses)
         syn_result_dict = {'syn/'+k: v for k, v in syn_result.average().items()}
 
@@ -180,7 +180,7 @@ class EstimatorSynth(nn.Module):
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
                 resyn_audio, outputs = self(data_dict)
                 # Reconstruction loss
-                losses = self.losses(data_dict, outputs, param_w=0, sw_loss=sw_loss, ae_model=ae_model)
+                losses = self.losses(data_dict, outputs, param_w=0, sw_loss=sw_loss, perc_model=perc_model)
                 real_result.update(losses)
         real_result_dict = {'real/'+k: v for k, v in real_result.average().items()}
 
