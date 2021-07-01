@@ -1,10 +1,14 @@
-import os, glob
+import os, glob, json
+from types import SimpleNamespace
 import numpy as np
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Subset, Dataset, DataLoader, random_split
+from diffsynth.modelutils import construct_synths
+from diffsynth.estimator import MFCCEstimator, MelEstimator
+from diffsynth.model import EstimatorSynth
 
 class WaveParamDataset(Dataset):
     def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True, domain=0):
@@ -103,3 +107,28 @@ def save_to_board_mel(i, writer, orig_mel, recon_mel, plot_num=8):
         axes[1, j].imshow(recon_mel[j], aspect=0.25)
     fig.tight_layout()
     writer.add_figure('plot_recon', fig, i)
+
+def load_model(load_dir, epoch=None):
+    pre_args_file = os.path.join(load_dir, 'args.txt')
+    # load model args
+    with open(pre_args_file) as f:
+        pre_args = json.load(f)
+        if 'load_dir' in pre_args:
+            pre_args_file = os.path.join(pre_args['load_dir'], 'args.txt')
+            with open(pre_args_file) as f:
+                pre_args = json.load(f)
+        pre_args = SimpleNamespace(**pre_args)
+    # make model
+    synth = construct_synths(pre_args.synth)
+    if pre_args.estimator == 'mfccgru':
+        estimator = MFCCEstimator(synth.ext_param_size)
+    elif pre_args.estimator == 'melgru':
+        estimator = MelEstimator(synth.ext_param_size)
+    # load model weights   
+    model = EstimatorSynth(estimator, synth)
+    if epoch is None:
+        model_name = 'model/state_dict.pth'
+    else:
+        model_name = 'model/statedict_{0}.pth'.format(epoch)
+    model.load_state_dict(torch.load(os.path.join(load_dir, model_name)))
+    return model

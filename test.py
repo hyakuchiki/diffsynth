@@ -10,7 +10,7 @@ from diffsynth.model import EstimatorSynth
 from diffsynth.loss import SpecWaveLoss
 from diffsynth.modelutils import construct_synths
 from train import WaveParamDataset
-from trainutils import plot_spec
+from trainutils import plot_spec, load_model
 import soundfile as sf
 
 def write_plot_audio(y, name):
@@ -35,23 +35,15 @@ if __name__ == "__main__":
     np.random.seed(seed=0) # subset
     device = 'cuda'
 
-    args.load_dir.rstrip('/')
+    # directory for audio/spectrogram output
     output_dir = args.load_dir.replace('results', 'output')
     os.makedirs(output_dir, exist_ok=True)
+    # directory for ground-truth
     target_dir = os.path.join(os.path.split(output_dir)[0], 'target')
     os.makedirs(target_dir, exist_ok=True)
 
-    model_dir = os.path.join(args.load_dir, 'model')
-
-    pre_args_file = os.path.join(args.load_dir, 'args.txt')
-    with open(pre_args_file) as f:
-        pre_args = json.load(f)
-        if 'load_dir' in pre_args:
-            pre_args_file = os.path.join(pre_args['load_dir'], 'args.txt')
-            with open(pre_args_file) as f:
-                pre_args = json.load(f)
-
-        pre_args = SimpleNamespace(**pre_args)
+    model = load_model(args.load_dir, args.epoch)
+    model.to(device)
 
     # load test sets
     syn_dset_train, syn_dset_valid, syn_dset_test, real_dset_train, real_dset_valid, real_dset_test = torch.load(args.dataset_dir)
@@ -59,33 +51,16 @@ if __name__ == "__main__":
         real_dset_test = WaveParamDataset(args.dataset_dir, params=True)
         print('loaded directory with {0} files for real data'.format(len(real_dset_test)))
 
-    synth = construct_synths(pre_args.synth)
-    if pre_args.estimator == 'mfccgru':
-        estimator = MFCCEstimator(synth.ext_param_size)
-    elif pre_args.estimator == 'melgru':
-        estimator = MelEstimator(synth.ext_param_size)
-    
-    model = EstimatorSynth(estimator, synth)
-    if args.epoch is None:
-        model_name = 'model/state_dict.pth'
-    else:
-        model_name = 'model/statedict_{0}.pth'.format(args.epoch)
-    model.load_state_dict(torch.load(os.path.join(args.load_dir, model_name)))
-
-    model.to(device)
-
-    recon_loss = SpecWaveLoss(l1_w=0.0, l2_w=0.0, norm=None)
-    
     syn_test_loader = DataLoader(syn_dset_test, batch_size=args.batch_size, num_workers=0)
     real_test_loader = DataLoader(real_dset_test, batch_size=args.batch_size, num_workers=0)
 
     syn_testbatch = next(iter(syn_test_loader))
     syn_testbatch.pop('params')
     syn_testbatch = {name:tensor.to(device) for name, tensor in syn_testbatch.items()}
-
     real_testbatch = next(iter(real_test_loader))
     real_testbatch = {name:tensor.to(device) for name, tensor in real_testbatch.items()}
 
+    sw_loss = SpecWaveLoss(l1_w=0.0, l2_w=0.0, norm=None)
     with torch.no_grad():
         model = model.eval()
         # render audio and plot spectrograms?
@@ -104,7 +79,7 @@ if __name__ == "__main__":
         
         print('finished writing audio')
         # get objective measure
-        test_losses = model.eval_epoch(syn_loader=syn_test_loader, real_loader=real_test_loader, recon_loss=recon_loss, device=device)
+        test_losses = model.eval_epoch(syn_loader=syn_test_loader, real_loader=real_test_loader, sw_loss=sw_loss, device=device)
         results_str = 'Test loss: '
         for k in test_losses:
             results_str += '{0}: {1:.3f} '.format(k, test_losses[k])

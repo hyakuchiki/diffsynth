@@ -87,7 +87,7 @@ def construct_synths(name, n_samples=64000, sr=16000):
             (harmor, {'amplitudes': 'AMP', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'DUMMY', 'cutoff': 'CUTOFF', 'q': 'Q_FILT'})
         ]
         fixed_params = {'BFRQ': torch.ones(1)*440}
-        static_params = ['M_OSC', 'Q_FILT', 'DUMMY']
+        static_params = ['M_OSC', 'Q_FILT', 'BFRQ', 'DUMMY']
     elif name == 'harmor_1oscfree':
         harmor = Harmor(n_samples=n_samples, sample_rate=sr, name='harmor', n_oscs=1)
         dag = [
