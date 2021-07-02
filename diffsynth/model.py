@@ -126,6 +126,7 @@ class EstimatorSynth(nn.Module):
         loss_args = loss_weights.copy()
         loss_args['perc_model'] = perc_model
         loss_args['sw_loss'] = sw_loss
+        count = 0
         for data_dict in loader:
             # send data to device
             if 'params' in data_dict:
@@ -153,7 +154,8 @@ class EstimatorSynth(nn.Module):
             torch.nn.utils.clip_grad_norm_(self.parameters(), clip)
             optimizer.step()
             sum_loss += batch_loss.detach().item()
-        sum_loss /= len(loader)
+            count += 1
+        sum_loss /= count
         return sum_loss
 
     def eval_epoch(self, syn_loader, real_loader, device, sw_loss=None, perc_model=None,):
