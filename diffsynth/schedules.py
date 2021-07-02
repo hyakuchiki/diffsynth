@@ -49,7 +49,7 @@ switch_1 = {
 }
 SCHEDULE_REGISTRY['switch_1'] = switch_1
 
-both_1 = {
+even_1 = {
     'unit': 'epochs',
     'param_w': functools.partial(linear_anneal, end_value=5.0, start_value=10.0, start=50, warm=150),
     'sw_w': functools.partial(linear_anneal, end_value=0.5, start_value=0.0, start=50, warm=150),
@@ -59,6 +59,13 @@ SCHEDULE_REGISTRY['both_1'] = both_1
 only_param = {
     'unit': 'epochs',
     'param_w': 10.0,
+}
+SCHEDULE_REGISTRY['only_param'] = only_param
+
+sw_param = {
+    'unit': 'epochs',
+    'param_w': 5.0,
+    'sw_w': 0.5
 }
 SCHEDULE_REGISTRY['only_param'] = only_param
 

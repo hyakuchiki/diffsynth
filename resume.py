@@ -1,4 +1,4 @@
-import os, tqdm, glob, argparse, json
+import os, tqdm, glob, argparse, json, functools
 from types import SimpleNamespace
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,6 +12,19 @@ from diffsynth.loss import SpecWaveLoss
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board
 from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
+
+def mix_iterable(dl_a, dl_b):
+    for i, j in zip(dl_a, dl_b):
+        yield i
+        yield j
+
+class ReiteratableWrapper():
+    def __init__(self, f):
+        self._f = f
+
+    def __iter__(self):
+        # make generator
+        return self._f()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -41,7 +54,6 @@ if __name__ == "__main__":
     parser.add_argument('--noise_mag',      type=float, default=0.1,            help='')
 
     parser.add_argument('--plot_interval',  type=int,   default=10,             help='')
-    parser.add_argument('--nbworkers',      type=int,   default=4,              help='')
     args = parser.parse_args()
 
     torch.manual_seed(0)
@@ -74,10 +86,16 @@ if __name__ == "__main__":
     elif args.train_data == 'synth':
         train_loader = DataLoader(syn_dset_train, shuffle=True, batch_size=args.batch_size, num_workers=4)
     elif args.train_data == 'mix':
-        indices = np.random.choice(len(syn_dset_train)+len(real_dset_train), len(syn_dset_train), replace=False)
         # Mix each roughly evenly
-        train_dset = Subset(ConcatDataset([syn_dset_train, real_dset_train]), indices)
-        train_loader = DataLoader(train_dset, shuffle=True, batch_size=args.batch_size, num_workers=4)
+        indices = np.random.choice(len(syn_dset_train), len(syn_dset_train)//2, replace=False)
+        syn_half = Subset(syn_dset_train, indices)
+        syn_half_loader = DataLoader(syn_half, shuffle=True, batch_size=args.batch_size, num_workers=4)
+        indices = np.random.choice(len(real_dset_train), len(syn_dset_train)//2, replace=False)
+        real_half = Subset(real_dset_train, indices)
+        real_half_loader = DataLoader(real_half, shuffle=True, batch_size=args.batch_size, num_workers=4)
+        generator = functools.partial(mix_iterable, syn_half_loader, real_half_loader)
+        # re-make generator every epoch
+        train_loader = ReiteratableWrapper(generator)
 
     syn_valid_loader = DataLoader(syn_dset_valid, batch_size=args.batch_size, num_workers=4)
     syn_test_loader = DataLoader(syn_dset_test, batch_size=args.batch_size, num_workers=4)
