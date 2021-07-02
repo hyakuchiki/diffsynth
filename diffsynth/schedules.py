@@ -67,7 +67,7 @@ sw_param = {
     'param_w': 5.0,
     'sw_w': 0.5
 }
-SCHEDULE_REGISTRY['only_param'] = only_param
+SCHEDULE_REGISTRY['sw_param'] = sw_param
 
 only_sw= {
     'unit': 'epochs',

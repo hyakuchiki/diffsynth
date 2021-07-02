@@ -12,6 +12,7 @@ from diffsynth.model import EstimatorSynth
 from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board, get_loaders, WaveParamDataset
 from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
+from diffsynth.perceptual.perceptual import PerceptualClassifier
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -22,11 +23,11 @@ if __name__ == "__main__":
     parser.add_argument('loss_sched',   type=str, help='')
     parser.add_argument('--estimator',  type=str,   default='melgru', help='estimator name')
     parser.add_argument('--epochs',     type=int,   default=200,    help='directory of dataset')
-    parser.add_argument('--batch_size', type=int,   default=64,     help='directory of dataset')
-    parser.add_argument('--lr',         type=float, default=1e-3,   help='directory of dataset')
-    parser.add_argument('--decay_rate', type=float, default=1.0,help='')
-    parser.add_argument('--length',     type=float, default=4.0,    help='')
-    parser.add_argument('--sr',         type=int,   default=16000,  help='')
+    parser.add_argument('--batch_size', type=int,   default=64)
+    parser.add_argument('--lr',         type=float, default=1e-3)
+    parser.add_argument('--decay_rate', type=float, default=1.0)
+    parser.add_argument('--length',     type=float, default=4.0)
+    parser.add_argument('--sr',         type=int,   default=16000)
     # Multiscale fft params
     parser.add_argument('--fft_sizes',  type=int,   default=[64, 128, 256, 512, 1024, 2048], nargs='*', help='')
     parser.add_argument('--hop_lengths',type=int,   default=None, nargs='*', help='')
@@ -38,6 +39,8 @@ if __name__ == "__main__":
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
     parser.add_argument('--l2_w',           type=float, default=0.0,            help='')
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
+    # load perceptual model
+    parser.add_argument('--perc_dir',       type=str,   default=None,           help='')
     # resume from trained checkpoint
     parser.add_argument('--load_model',     type=str,   default=None,           help='')
     # add noise to input
@@ -120,7 +123,15 @@ if __name__ == "__main__":
         resume_epoch = 0
 
     # perceptual model (WIP)
-    perc_model = None
+    if args.perc_dir is not None:
+        ## construct ae model
+        perc_model = PerceptualClassifier(11, syn_testbatch['audio'].shape[-1]).to(device)
+        perc_model.load_state_dict(torch.load(os.path.join(args.perc_dir, 'model/state_dict.pth')))
+        perc_model = perc_model.eval().to(device)
+        for param in perc_model.parameters():
+            param.requires_grad = False
+    else:
+        perc_model = None
 
     # initial state (epoch=0)
     with torch.no_grad():
