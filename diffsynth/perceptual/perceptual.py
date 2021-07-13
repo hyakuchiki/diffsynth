@@ -18,7 +18,7 @@ class PerceptualClassifier(Perceptual):
         super().__init__()
         self.n_mels = n_mels
         self.channels = channels
-        self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sample_rate), LogTransform())
+        self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sample_rate, power=2), LogTransform())
         self.norm = Normalize2d(norm) if norm else None
 
         spec_len = math.ceil((n_samples - n_fft) / hop) + 1
@@ -44,17 +44,17 @@ class PerceptualClassifier(Perceptual):
         self.mlp = MLP(final_size[0] * final_size[1] * channels, 64, loop=2)
         self.out = nn.Linear(64, output_dims)
     
-    def perceptual_loss(self, target_audio, input_audio, layers=(0, 1, 2)):
+    def perceptual_loss(self, target_audio, input_audio, layers=(2, )):
         self.eval()
         batch_size = input_audio.shape[0]
         audios = torch.cat([input_audio, target_audio], dim=0)
-        specs = self.logmel(audios)
+        specs = self.logmel(audios).unsqueeze(1)
         loss = 0
         out = specs
         for i, m in enumerate(self.convmodel):
             out = m(out)
             if i in layers:
-                loss += F.l1_loss(out[:batch_size] - out[batch_size:])
+                loss += F.l1_loss(out[:batch_size], out[batch_size:])
         return loss
 
     def transform(self, audio):

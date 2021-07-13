@@ -107,30 +107,30 @@ only_sw = {
 }
 SCHEDULE_REGISTRY['only_sw'] = only_sw
 
-only_enc = {
+only_perc = {
     'unit': 'epochs',
-    'enc_w': 10.0,
+    'perc_w': 10.0,
 }
-SCHEDULE_REGISTRY['only_enc'] = only_enc
+SCHEDULE_REGISTRY['only_perc'] = only_perc
 
-# switch completely from param to spectral loss and embedding loss
-switch_e = {
+# switch completely from param to spectral loss and perceptual loss
+switch_p = {
     'unit': 'epochs',
     # parameter loss weight
     'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
     # reconstruction (spectral/wave) loss weight
     'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
     # perceptual loss based on ae
-    'enc_w': functools.partial(linear_anneal, end_value=10.0, start_value=0.0, start=50, warm=150),
+    'perc_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
 }
-SCHEDULE_REGISTRY['switch_e'] = switch_e
+SCHEDULE_REGISTRY['switch_p'] = switch_p
 
-switch_only_e = {
+switch_only_p = {
     'unit': 'epochs',
     'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=50, warm=150),
-    'enc_w': functools.partial(linear_anneal, end_value=10.0, start_value=0.0, start=50, warm=150),
+    'perc_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=50, warm=150),
 }
-SCHEDULE_REGISTRY['switch_only_e'] = switch_only_e
+SCHEDULE_REGISTRY['switch_only_p'] = switch_only_p
 
 switch_mfcc = {
     'unit': 'epochs',
