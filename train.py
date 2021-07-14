@@ -153,7 +153,10 @@ if __name__ == "__main__":
 
     for i in tqdm.tqdm(range(resume_epoch+1, args.epochs+1)):
         loss_weights = loss_w_sched.get_parameters(i)
-        train_loss = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, perc_model=perc_model)
+        train_loss, params_grad = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, perc_model=perc_model, log_grad=True)
+        if params_grad is not None:
+            for k, v in params_grad.items():
+                writer.add_scalar('params_grad/'+k, v, i)
         valid_losses = model.eval_epoch(syn_loader=syn_valid_loader, real_loader=real_valid_loader, device=device, sw_loss=sw_loss, perc_model=perc_model)
         scheduler.step()
         tqdm.tqdm.write('Epoch: {0:03} Train: {1:.4f} Valid: {2:.4f}'.format(i, train_loss, valid_losses[monitor]))

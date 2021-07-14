@@ -1,10 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import diffsynth.util as util
 from diffsynth.spectral import compute_lsd, Mfcc, loudness_loss
 
-class LossLog():
+class StatsLog():
     def __init__(self):
         self.stats = dict()
 
@@ -14,14 +15,24 @@ class LossLog():
     def average(self):
         return {k: sum(v)/len(v) for k, v in self.stats.items()}
 
+    def std(self):
+        return {k: np.array(v).std() for k, v in self.stats.items()}
+
+    def add_entry(self, k, v):
+        if isinstance(v, torch.Tensor):
+            # turn into list of python floats
+            v = v.squeeze().tolist()
+        if not isinstance(v, list):
+            # a lone float into list of float
+            v = [v]
+        if k in self.stats:
+            self.stats[k].extend(v)
+        else:
+            self.stats[k] = v
+
     def update(self, stat_dict):
         for k, v in stat_dict.items():
-            # turn into python float
-            val = v.item() if isinstance(v, torch.Tensor) else v
-            if k in self.stats:
-                self.stats[k].append(val)
-            else:
-                self.stats[k] = [val,]
+            self.add_entry(k,v )
 
 class EstimatorSynth(nn.Module):
     """
@@ -32,6 +43,7 @@ class EstimatorSynth(nn.Module):
         self.estimator = estimator
         self.synth = synth
         self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=16000)
+        self.param_grad_log = None
 
     def param_loss(self, synth_output, param_dict):
         loss = 0
@@ -56,6 +68,20 @@ class EstimatorSynth(nn.Module):
         conditioning['est_param'] = torch.sigmoid(conditioning['est_param'])
         return conditioning['est_param'], conditioning
 
+    def log_param_grad(self, params_dict):
+        def save_grad(name):
+            def hook(grad):
+                # batch, n_frames, feat_size
+                grad_v = grad.abs().mean(dim=(0, 1))
+                for i, gv in enumerate(grad_v):
+                    self.param_grad_log.add_entry(name+'_{0}'.format(i), gv)
+            return hook
+
+        if self.param_grad_log is not None:
+            for k, v in params_dict.items():
+                if v.requires_grad == True:
+                    v.register_hook(save_grad(k))
+
     def forward(self, conditioning):
         """
         Args:
@@ -67,6 +93,9 @@ class EstimatorSynth(nn.Module):
         audio_length = conditioning['audio'].shape[1]
         est_param, conditioning = self.estimate_param(conditioning)
         params_dict = self.synth.fill_params(est_param, conditioning)
+        if self.param_grad_log is not None:
+            self.log_param_grad(params_dict)
+
         resyn_audio, outputs = self.synth(params_dict, audio_length)
         return resyn_audio, outputs
 
@@ -77,11 +106,18 @@ class EstimatorSynth(nn.Module):
         audio_length = conditioning['audio'].shape[1]
         est_param, conditioning = self.estimate_param(conditioning)
         params_dict = self.synth.fill_params(est_param, conditioning)
+        if self.param_grad_log is not None:
+            self.log_param_grad(params_dict)
+        
         synth_params = self.synth.calculate_params(params_dict, audio_length)
         return synth_params, conditioning
 
     def audio_losses(self, target_audio, resyn_audio, **kwargs):
-        perc_model = kwargs['perc_model']
+        # always computes mean across batch dimension
+        if 'perc_model' in kwargs:
+            perc_model = kwargs['perc_model']
+        else:
+            perc_model = None
         sw_loss = kwargs['sw_loss']
         audio_loss={}
         if kwargs['sw_w'] > 0.0 and sw_loss is not None:
@@ -120,13 +156,15 @@ class EstimatorSynth(nn.Module):
         loss['param'] = param_loss
         return loss
 
-    def train_epoch(self, loader, optimizer, device, loss_weights, sw_loss=None, perc_model=None, clip=1.0):
+    def train_epoch(self, loader, optimizer, device, loss_weights, sw_loss=None, perc_model=None, clip=1.0, log_grad=False):
         self.train()
         sum_loss = 0
         loss_args = loss_weights.copy()
         loss_args['perc_model'] = perc_model
         loss_args['sw_loss'] = sw_loss
         count = 0
+        # reset log
+        self.param_grad_log = StatsLog() if log_grad else None
         for data_dict in loader:
             # send data to device
             if 'params' in data_dict:
@@ -155,13 +193,14 @@ class EstimatorSynth(nn.Module):
             optimizer.step()
             sum_loss += batch_loss.detach().item()
             count += 1
+        params_grad = self.param_grad_log.average() if log_grad else None
         sum_loss /= count
-        return sum_loss
+        return sum_loss, params_grad
 
     def eval_epoch(self, syn_loader, real_loader, device, sw_loss=None, perc_model=None,):
         self.eval()
         # in-domain
-        syn_result = LossLog()
+        syn_result = StatsLog()
         with torch.no_grad():
             for data_dict in syn_loader:
                 params = data_dict.pop('params')
@@ -176,7 +215,7 @@ class EstimatorSynth(nn.Module):
         syn_result_dict = {'syn/'+k: v for k, v in syn_result.average().items()}
 
         # out-of-domain
-        real_result = LossLog()
+        real_result = StatsLog()
         with torch.no_grad():
             for data_dict in real_loader:
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}

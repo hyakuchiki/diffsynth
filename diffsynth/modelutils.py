@@ -120,6 +120,19 @@ def construct_synths(name, n_samples=64000, sr=16000):
             ]
         fixed_params = {'CF_RATE': torch.ones(1), 'CF_DEPTH': torch.ones(1)*0.1}
         static_params=['BFRQ', 'M_OSC', 'MULT', 'Q_FILT', 'CF_DELAY', 'CF_MIX', 'CF_RATE', 'CF_DEPTH']
+    elif name == 'harmor_cffenv':
+        harmor = Harmor(n_samples=n_samples, name='harmor', sep_amp=True, n_oscs=2)
+        enva = ADSREnvelope(name='enva', max_value=0.6, channels=2)
+        envc = ADSREnvelope(name='envc', channels=1)
+        cf = ChorusFlanger(name='cf', sr=sr, delay_range=(1.0, 40.0))
+        dag = [
+            (enva, {'floor': 'AMP_FLOOR', 'peak': 'PEAK_A', 'attack': 'AT_A', 'decay': 'DE_A', 'sus_level': 'SU_A', 'release': 'RE_A', 'note_off': 'NO', 'noise_mag': 'NOISE_A'}),
+            (envc, {'floor': 'CUT_FLOOR', 'peak': 'PEAK_C', 'attack': 'AT_C', 'decay': 'DE_C', 'sus_level': 'SU_C', 'release': 'RE_C', 'note_off': 'NO', 'noise_mag': 'NOISE_C'}),
+            (harmor, {'amplitudes': 'enva', 'osc_mix': 'M_OSC', 'f0_hz': 'BFRQ', 'f0_mult': 'MULT', 'cutoff': 'envc', 'q': 'Q_FILT'}),
+            (cf, {'audio': 'harmor', 'delay_ms': 'CF_DELAY', 'rate': 'CF_RATE', 'depth': 'CF_DEPTH', 'mix': 'CF_MIX'})
+            ]
+        fixed_params = {'AMP_FLOOR':torch.zeros(1), 'NO': torch.ones(1)*0.75, 'CF_RATE': torch.ones(1), 'CF_DEPTH': torch.ones(1)*0.1, 'NOISE_A':torch.zeros(1), 'NOISE_C':torch.zeros(1)}
+        static_params=['AMP_FLOOR', 'PEAK_A', 'AT_A', 'DE_A', 'SU_A', 'RE_A', 'CUT_FLOOR', 'PEAK_C', 'AT_C', 'DE_C', 'SU_C', 'RE_C', 'BFRQ', 'MULT', 'M_OSC', 'Q_FILT', 'NOISE_A', 'NOISE_C', 'CF_DELAY', 'CF_MIX', 'NO', 'CF_DEPTH', 'CF_RATE']
     elif name == 'harmor_rev':
         harmor = Harmor(n_samples=n_samples, sample_rate=sr, name='harmor', sep_amp=True, n_oscs=2)
         reverb = DecayReverb(name='reverb', ir_length=16000)
