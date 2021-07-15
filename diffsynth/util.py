@@ -4,6 +4,35 @@ import numpy as np
 import torch.nn.functional as F
 import math
 
+class StatsLog():
+    def __init__(self):
+        self.stats = dict()
+
+    def __getitem__(self, key):
+        return sum(self.stats[key]) / len(self.stats[key])
+
+    def average(self):
+        return {k: sum(v)/len(v) for k, v in self.stats.items()}
+
+    def std(self):
+        return {k: np.array(v).std() for k, v in self.stats.items()}
+
+    def add_entry(self, k, v):
+        if isinstance(v, torch.Tensor):
+            # turn into list of python floats
+            v = v.squeeze().tolist()
+        if not isinstance(v, list):
+            # a lone float into list of float
+            v = [v]
+        if k in self.stats:
+            self.stats[k].extend(v)
+        else:
+            self.stats[k] = v
+
+    def update(self, stat_dict):
+        for k, v in stat_dict.items():
+            self.add_entry(k, v)
+
 def log_eps(x, eps=1e-4):
     return torch.log(x+eps)
 

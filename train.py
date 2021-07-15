@@ -34,6 +34,7 @@ if __name__ == "__main__":
     parser.add_argument('--win_lengths',type=int,   default=None, nargs='*', help='')
     # spectral loss weights
     parser.add_argument('--mag_w',      type=float, default=1.0,            help='')
+    parser.add_argument('--clip',       type=float, default=1.0,            help='')
     parser.add_argument('--log_mag_w',  type=float, default=1.0,            help='')
     # waveform loss weights (not used)
     parser.add_argument('--l1_w',           type=float, default=0.0,            help='')
@@ -153,7 +154,7 @@ if __name__ == "__main__":
 
     for i in tqdm.tqdm(range(resume_epoch+1, args.epochs+1)):
         loss_weights = loss_w_sched.get_parameters(i)
-        train_loss, params_grad = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, perc_model=perc_model, log_grad=True)
+        train_loss, params_grad = model.train_epoch(loader=syn_train_loader, optimizer=optimizer, device=device, loss_weights=loss_weights, sw_loss=sw_loss, perc_model=perc_model, clip=args.clip, log_grad=True)
         if params_grad is not None:
             for k, v in params_grad.items():
                 writer.add_scalar('params_grad/'+k, v, i)

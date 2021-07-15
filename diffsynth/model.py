@@ -5,35 +5,6 @@ import torch.nn.functional as F
 import diffsynth.util as util
 from diffsynth.spectral import compute_lsd, Mfcc, loudness_loss
 
-class StatsLog():
-    def __init__(self):
-        self.stats = dict()
-
-    def __getitem__(self, key):
-        return sum(self.stats[key]) / len(self.stats[key])
-
-    def average(self):
-        return {k: sum(v)/len(v) for k, v in self.stats.items()}
-
-    def std(self):
-        return {k: np.array(v).std() for k, v in self.stats.items()}
-
-    def add_entry(self, k, v):
-        if isinstance(v, torch.Tensor):
-            # turn into list of python floats
-            v = v.squeeze().tolist()
-        if not isinstance(v, list):
-            # a lone float into list of float
-            v = [v]
-        if k in self.stats:
-            self.stats[k].extend(v)
-        else:
-            self.stats[k] = v
-
-    def update(self, stat_dict):
-        for k, v in stat_dict.items():
-            self.add_entry(k,v )
-
 class EstimatorSynth(nn.Module):
     """
     audio -> Estimator -> Synth -> audio
@@ -164,7 +135,7 @@ class EstimatorSynth(nn.Module):
         loss_args['sw_loss'] = sw_loss
         count = 0
         # reset log
-        self.param_grad_log = StatsLog() if log_grad else None
+        self.param_grad_log = util.StatsLog() if log_grad else None
         for data_dict in loader:
             # send data to device
             if 'params' in data_dict:
@@ -200,7 +171,7 @@ class EstimatorSynth(nn.Module):
     def eval_epoch(self, syn_loader, real_loader, device, sw_loss=None, perc_model=None,):
         self.eval()
         # in-domain
-        syn_result = StatsLog()
+        syn_result = util.StatsLog()
         with torch.no_grad():
             for data_dict in syn_loader:
                 params = data_dict.pop('params')
@@ -215,7 +186,7 @@ class EstimatorSynth(nn.Module):
         syn_result_dict = {'syn/'+k: v for k, v in syn_result.average().items()}
 
         # out-of-domain
-        real_result = StatsLog()
+        real_result = util.StatsLog()
         with torch.no_grad():
             for data_dict in real_loader:
                 data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}

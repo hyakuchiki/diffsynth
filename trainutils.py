@@ -132,3 +132,17 @@ def load_model(load_dir, epoch=None):
         model_name = 'model/statedict_{0}.pth'.format(epoch)
     model.load_state_dict(torch.load(os.path.join(load_dir, model_name)))
     return model
+
+def plot_param_dist(param_stats):
+    """
+    violin plot of parameter values
+    """
+
+    fig, ax = plt.subplots(figsize=(15, 5))
+    labels = param_stats.keys()
+    parts = ax.violinplot(param_stats.values(), showmeans=True)
+    ax.set_xticks(np.arange(1, len(labels) + 1))
+    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_xlim(0.25, len(labels) + 0.75)
+    ax.set_ylim(0, 1)
+    return fig
