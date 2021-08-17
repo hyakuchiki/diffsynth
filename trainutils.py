@@ -42,6 +42,7 @@ def plot_spec(y, ax, sr=16000):
     D = librosa.stft(y)  # STFT of y
     S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
     img = librosa.display.specshow(S_db, sr=sr, x_axis='time', y_axis='log', ax=ax)
+    ax.label_outer()
 
 def get_loaders(dset, batch_size, subset_train=None, splits=[.8, .1, .1], nbworkers=4):
     dset_l = len(dset)

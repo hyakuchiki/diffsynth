@@ -117,7 +117,7 @@ class EstimatorSynth(nn.Module):
         
     def losses(self, target, output, **loss_args):
         #default values
-        args = {'param_w': 1.0, 'sw_w':1.0, 'perc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'loud_w': 1.0, 'sw_loss': None, 'ae_model': None}
+        args = {'param_w': 1.0, 'sw_w':1.0, 'perc_w':1.0, 'mfcc_w':1.0, 'lsd_w': 1.0, 'loud_w': 1.0, 'sw_loss': None, 'perc_model': None}
         args.update(loss_args)
         if args['param_w'] > 0.0 and 'params' in target:
             param_loss = args['param_w'] * self.param_loss(output, target['params'])
@@ -168,7 +168,7 @@ class EstimatorSynth(nn.Module):
         sum_loss /= count
         return sum_loss, params_grad
 
-    def eval_epoch(self, syn_loader, real_loader, device, sw_loss=None, perc_model=None,):
+    def eval_epoch(self, syn_loader, real_loader, device, sw_loss=None, perc_model=None):
         self.eval()
         # in-domain
         syn_result = util.StatsLog()
@@ -200,3 +200,8 @@ class EstimatorSynth(nn.Module):
         result.update(syn_result_dict)
         result.update(real_result_dict)
         return result
+
+# only for legacy
+class NoParamEstimatorSynth(EstimatorSynth):
+    def __init__(self, estimator, synth):
+        super().__init__(estimator, synth)

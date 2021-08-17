@@ -13,6 +13,7 @@ from diffsynth.modelutils import construct_synths
 from trainutils import save_to_board, get_loaders, WaveParamDataset
 from diffsynth.schedules import SCHEDULE_REGISTRY, ParamScheduler
 from diffsynth.perceptual.perceptual import PerceptualClassifier
+from diffsynth.perceptual.openl3 import PerceptualOpenl3
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -42,6 +43,8 @@ if __name__ == "__main__":
     parser.add_argument('--linf_w',         type=float, default=0.0,            help='')
     # load perceptual model
     parser.add_argument('--perc_dir',       type=str,   default=None,           help='')
+    parser.add_argument('--l3_config',      type=str,   default='mel256_music_512', help='')
+    parser.add_argument('--l3_model_dir',   type=str,   default=None,           help='')
     # resume from trained checkpoint
     parser.add_argument('--load_model',     type=str,   default=None,           help='')
     # add noise to input
@@ -131,9 +134,15 @@ if __name__ == "__main__":
         perc_model = perc_model.eval().to(device)
         for param in perc_model.parameters():
             param.requires_grad = False
+    elif args.l3_model_dir is not None:
+        input_repr, data_type, embed_size = args.l3_config.split('_')
+        perc_model = PerceptualOpenl3(args.l3_model_dir, input_repr, data_type, int(embed_size))
+        perc_model = perc_model.to(device)
+        for param in perc_model.parameters():
+            param.requires_grad = False
     else:
-        perc_model = None
-
+        ol3_model = None
+    
     # initial state (epoch=0)
     with torch.no_grad():
         model.eval()

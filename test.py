@@ -18,8 +18,8 @@ def write_plot_audio(y, name):
     # y; numpy array of audio
     # write audio file
     sf.write('{0}.wav'.format(name), y, 16000)
-    fig, ax = plt.subplots(figsize=(1.5, 1))
-    ax.axis('off')
+    fig, ax = plt.subplots(figsize=(1.5, 1), tight_layout=True)
+    # ax.axis('off')
     plot_spec(y, ax, 16000)
     fig.savefig('{0}.png'.format(name))
     plt.close(fig)
