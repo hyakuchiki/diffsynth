@@ -33,9 +33,9 @@ class ParamScheduler():
 
 switch_1 = {
     # parameter loss weight
-    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=1250, warm=3750),
+    'param_w': functools.partial(linear_anneal, end_value=0.0, start_value=10.0, start=12500, warm=37500),
     # reconstruction (spectral/wave) loss weight
-    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=1250, warm=3750),
+    'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=12500, warm=37500),
 }
 SCHEDULE_REGISTRY['switch_1'] = switch_1
 
