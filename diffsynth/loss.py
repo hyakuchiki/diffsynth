@@ -38,7 +38,7 @@ class SpecWaveLoss():
     """
     loss for reconstruction with multiscale spectrogram loss and waveform loss
     """
-    def __init__(self, fft_sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=None, win_lengths=None, mag_w=1.0, log_mag_w=1.0, l1_w=0, l2_w=1.0, linf_w=0.0, linf_k=1024, norm=None):
+    def __init__(self, fft_sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=None, win_lengths=None, mag_w=1.0, log_mag_w=1.0, l1_w=0, l2_w=0.0, linf_w=0.0, linf_k=1024, norm=None):
         super().__init__()
         self.fft_sizes = fft_sizes
         self.hop_lengths = hop_lengths

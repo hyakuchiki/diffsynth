@@ -1,0 +1,10 @@
+_target_: diffsynth.data.IdOodDataModule
+
+id_dir: null
+ood_dir: null
+train_type: ood
+batch_size: 64
+sample_rate: 16000
+length: 4.0
+num_workers: 8
+splits: [0.8, 0.1, 0.1]

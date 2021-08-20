@@ -1,0 +1,5 @@
+defaults:
+  - trainer: default.yaml
+  - model: default.yaml
+  - data: trainid.yaml
+  - experiment: null

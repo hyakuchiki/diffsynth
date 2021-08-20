@@ -6,7 +6,6 @@ import librosa
 from torchaudio.transforms import MelScale
 from torchaudio.functional import create_dct
 from diffsynth.util import log_eps, pad_or_trim_to_expected_length
-import crepe
 
 amp = lambda x: x[...,0]**2 + x[...,1]**2
 
@@ -172,6 +171,11 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
     loudness = pad_or_trim_to_expected_length(loudness, expected_len, -range_db)
     return loudness
 
+def loudness_loss(input_audio, target_audio, sr=16000):
+    input_l = compute_loudness(input_audio, sr)
+    target_l = compute_loudness(target_audio, sr)
+    return F.l1_loss(input_l, target_l, reduction='mean')
+
 def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
     """Fundamental frequency (f0) estimate using CREPE.
 
@@ -185,7 +189,7 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
     Returns:
         f0_hz: Fundamental frequency in Hz. Shape [n_frames,].
     """
-
+    import crepe
     n_secs = len(audio) / float(sample_rate)  # `n_secs` can have milliseconds
     crepe_step_size = 1000 / frame_rate  # milliseconds
     expected_len = int(n_secs * frame_rate)
@@ -222,56 +226,3 @@ def fix_f0(f0, diff_width=4, thres=0.4):
     if len(orig_shape) == 3: #[batch, n_frames, feature_dim=1]
         fixed_f0 = fixed_f0.unsqueeze(1)
     return fixed_f0
-
-def loudness_loss(input_audio, target_audio, sr=16000):
-    input_l = compute_loudness(input_audio, sr)
-    target_l = compute_loudness(target_audio, sr)
-    return F.l1_loss(input_l, target_l, reduction='mean')
-
-# deprecated
-class SpectralLoss(nn.Module):
-    def __init__(self, fft_sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=None, win_lengths=None, sample_rate=16000, mag_w=1.0, log_mag_w=1.0, loud_w=0.0):
-        super().__init__()
-        self.fft_sizes = fft_sizes
-        self.hop_lengths = hop_lengths
-        self.win_lengths = win_lengths
-        self.mag_w = mag_w
-        self.log_mag_w = log_mag_w
-        self.loud_w = loud_w
-        self.sample_rate = sample_rate# only needed for loudness
-
-    def loss_func(self, input, target, loss_type, reduction='mean'):
-        if loss_type == 'L1':
-            return F.l1_loss(input, target, reduction='mean')
-        if loss_type == 'MSE':
-            return F.mse_loss(input, target, reduction='mean')
-        if loss_type == 'smooth_L1':
-            return F.smooth_l1_loss(input, target, reduction='mean')
-    
-    def forward(self, input_audio, target_audio, loss_type='L1', reduction='mean'):
-        """get loss of input audio
-
-        Args:
-            input_audio (torch.Tensor): Shape [batch, n_samples]
-            target (torch.Tensor): target waveform, Shape [batch, n_samples]
-            loss_type (str, optional): Loss function for comparing spectral feature. Defaults to 'L1'.
-            reduction (str, optional): Reduce by mean/sum or None. Defaults to 'mean'.
-        """
-        specs = multiscale_fft(input_audio, self.fft_sizes, self.hop_lengths, self.win_lengths)
-        target_specs = multiscale_fft(target_audio, self.fft_sizes, self.hop_lengths, self.win_lengths)
-        
-        batch_size = input_audio.shape[0]
-        loss = 0.0
-        for i, spec in enumerate(specs):
-            target_spec = target_specs[i]
-            if self.mag_w > 0:
-                loss += self.mag_w * self.loss_func(spec, target_spec, loss_type, reduction)
-            if self.log_mag_w > 0:
-                loss += self.log_mag_w * self.loss_func(log_eps(spec), log_eps(target_spec), loss_type, reduction)
-        
-        if self.loud_w > 0: # don't use this
-            input_l = compute_loudness(input_audio, self.sample_rate)
-            target_l = compute_loudness(target_audio, self.sample_rate)
-            loss += self.loud_w * self.loss_func(input_l, target_l, loss_type, reduction)
-        
-        return loss
