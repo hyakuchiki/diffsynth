@@ -59,10 +59,10 @@ class AudioLogger(Callback):
         self.batch_freq = batch_frequency
 
     @rank_zero_only
-    def log_local(self, writer, split, current_epoch, orig_audio, resyn_audio):
-        save_to_board(current_epoch, split, writer, orig_audio, resyn_audio)
+    def log_local(self, writer, name, current_epoch, orig_audio, resyn_audio):
+        save_to_board(current_epoch, name, writer, orig_audio, resyn_audio)
 
-    def log_audio(self, pl_module, batch, batch_idx, split="train"):
+    def log_audio(self, pl_module, batch, batch_idx, name="train"):
         if batch_idx % self.batch_freq == 0:
             is_train = pl_module.training
             if is_train:
@@ -70,19 +70,20 @@ class AudioLogger(Callback):
             # get audio
             with torch.no_grad():
                 resyn_audio, _outputs = pl_module(batch)
-            resyn_audio = resyn_audio.detach().cpu()
-            orig_audio = batch['audio'].detach().cpu()
-
-            self.log_local(pl_module.logger.experiment, split, pl_module.current_epoch, orig_audio, resyn_audio)
+            resyn_audio = torch.clamp(resyn_audio.detach().cpu(), -1, 1)
+            orig_audio = torch.clamp(batch['audio'].detach().cpu(), -1, 1)
+            
+            self.log_local(pl_module.logger.experiment, name, pl_module.current_epoch, orig_audio, resyn_audio)
 
             if is_train:
                 pl_module.train()
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
-        self.log_audio(pl_module, batch, batch_idx, split="train")
+        self.log_audio(pl_module, batch, batch_idx, name="train")
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
-        self.log_audio(pl_module, batch, batch_idx, split="val")
+        data_type='id' if dataloader_idx==0 else 'ood'
+        self.log_audio(pl_module, batch, batch_idx, name="val_"+data_type)
 
 def save_to_board_mel(i, writer, orig_mel, recon_mel, plot_num=8):
     orig_mel = orig_mel.detach().cpu()

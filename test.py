@@ -1,18 +1,15 @@
-import os, tqdm, glob, argparse, json, pickle
-from types import SimpleNamespace
-import numpy as np
+import os, argparse, json, pickle, re
 import matplotlib.pyplot as plt
 import torch
-from torch.utils.data import Subset, DataLoader, Dataset, ConcatDataset, random_split
 
-from diffsynth.estimator import MFCCEstimator, MelEstimator
-from diffsynth.model import EstimatorSynth
 from diffsynth.loss import SpecWaveLoss
-from diffsynth.modelutils import construct_synths
 from diffsynth import util
-from train import WaveParamDataset
-from trainutils import plot_spec, load_model, plot_param_dist
+from diffsynth.model import EstimatorSynth
+from plot import plot_spec, plot_param_dist
 import soundfile as sf
+
+import hydra
+import pytorch_lightning as pl
 
 def write_plot_audio(y, name):
     # y; numpy array of audio
@@ -79,63 +76,60 @@ def test_model(model, syn_loader, real_loader, device, sw_loss=None, perc_model=
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('load_dir',         type=str,   help='')
-    parser.add_argument('dataset_dir',      type=str,   help='directory of saved dataset')
+    parser.add_argument('ckpt',             type=str,   help='')
+    parser.add_argument('output_dir',         type=str,   help='')
     parser.add_argument('--write_audio',    action='store_true')
-    parser.add_argument('--batch_size',     type=int,   default=64,     help='')
-    parser.add_argument('--epoch',          type=int,   default=None,     help='')
     args = parser.parse_args()
 
-    torch.manual_seed(0)
-    np.random.seed(seed=0) # subset
+    pl.seed_everything(0, workers=True)
     device = 'cuda'
 
+    ckpt_dir = args.ckpt
+    config_dir = re.sub(r'tb_logs.*', '.hydra', ckpt_dir)
+    # initialize model
+    hydra.initialize(config_path=config_dir, job_name="test")
+    cfg = hydra.compose(config_name="config")
+
+    model = hydra.utils.instantiate(cfg.model)
+    datamodule = hydra.utils.instantiate(cfg.data)
+    datamodule.setup(None)
+    id_test_loader, ood_test_loader = datamodule.test_dataloader()
+    model = EstimatorSynth.load_from_checkpoint(ckpt_dir, estimator=model.estimator, l_sched=model.loss_w_sched, sw_loss=model.sw_loss)
+
     # directory for audio/spectrogram output
-    output_dir = args.load_dir.replace('results', 'output')
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     # directory for ground-truth
     target_dir = os.path.join(os.path.split(output_dir)[0], 'target')
     os.makedirs(target_dir, exist_ok=True)
 
-    model = load_model(args.load_dir, args.epoch)
-    model.to(device)
-
-    # load test sets
-    syn_dset_train, syn_dset_valid, syn_dset_test, real_dset_train, real_dset_valid, real_dset_test = torch.load(args.dataset_dir)
-    if args.dataset_dir[-2:] != 'pt': # test on something else
-        real_dset_test = WaveParamDataset(args.dataset_dir, params=True)
-        print('loaded directory with {0} files for real data'.format(len(real_dset_test)))
-
-    syn_test_loader = DataLoader(syn_dset_test, batch_size=args.batch_size, num_workers=0)
-    real_test_loader = DataLoader(real_dset_test, batch_size=args.batch_size, num_workers=0)
-
-    syn_testbatch = next(iter(syn_test_loader))
-    syn_testbatch.pop('params')
-    syn_testbatch = {name:tensor.to(device) for name, tensor in syn_testbatch.items()}
-    real_testbatch = next(iter(real_test_loader))
-    real_testbatch = {name:tensor.to(device) for name, tensor in real_testbatch.items()}
+    id_testbatch = next(iter(id_test_loader))
+    id_testbatch.pop('params')
+    id_testbatch = {name:tensor.to(device) for name, tensor in id_testbatch.items()}
+    ood_testbatch = next(iter(ood_test_loader))
+    ood_testbatch = {name:tensor.to(device) for name, tensor in ood_testbatch.items()}
 
     sw_loss = SpecWaveLoss(l1_w=0.0, l2_w=0.0, norm=None)
     with torch.no_grad():
         model = model.eval()
         if args.write_audio:
             # render audio and plot spectrograms?
-            syn_resyn_audio, _output = model(syn_testbatch)
+            id_resyn_audio, _output = model(id_testbatch)
             for i in range(args.batch_size):
-                resyn_audio = syn_resyn_audio[i].detach().cpu().numpy()
-                write_plot_audio(resyn_audio, os.path.join(output_dir, 'synth_{0:03}'.format(i)))
-                orig_audio = syn_testbatch['audio'][i].detach().cpu().numpy()
-                write_plot_audio(orig_audio, os.path.join(target_dir, 'synth_{0:03}'.format(i)))
-            real_resyn_audio, _output = model(real_testbatch)
+                resyn_audio = id_resyn_audio[i].detach().cpu().numpy()
+                write_plot_audio(resyn_audio, os.path.join(output_dir, 'id_{0:03}'.format(i)))
+                orig_audio = id_testbatch['audio'][i].detach().cpu().numpy()
+                write_plot_audio(orig_audio, os.path.join(target_dir, 'id_{0:03}'.format(i)))
+            ood_resyn_audio, _output = model(ood_testbatch)
             for i in range(args.batch_size):
-                resyn_audio = real_resyn_audio[i].detach().cpu().numpy()
-                write_plot_audio(resyn_audio, os.path.join(output_dir, 'real_{0:03}'.format(i)))
-                orig_audio = real_testbatch['audio'][i].detach().cpu().numpy()
-                write_plot_audio(orig_audio, os.path.join(target_dir, 'real_{0:03}'.format(i)))
+                resyn_audio = ood_resyn_audio[i].detach().cpu().numpy()
+                write_plot_audio(resyn_audio, os.path.join(output_dir, 'ood_{0:03}'.format(i)))
+                orig_audio = ood_testbatch['audio'][i].detach().cpu().numpy()
+                write_plot_audio(orig_audio, os.path.join(target_dir, 'ood_{0:03}'.format(i)))
             print('finished writing audio')
         
         # get objective measure
-        test_losses, param_stats = test_model(model, syn_loader=syn_test_loader, real_loader=real_test_loader, sw_loss=sw_loss, device=device)
+        test_losses, param_stats = test_model(model, syn_loader=id_test_loader, real_loader=ood_test_loader, sw_loss=sw_loss, device=device)
         results_str = 'Test loss: '
         for k in test_losses:
             results_str += '{0}: {1:.3f} '.format(k, test_losses[k])

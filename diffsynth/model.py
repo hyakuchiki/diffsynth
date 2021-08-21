@@ -6,27 +6,28 @@ import diffsynth.util as util
 from diffsynth.spectral import compute_lsd, loudness_loss, Mfcc
 import pytorch_lightning as pl
 from diffsynth.modelutils import construct_synths
+import hydra
 
 class EstimatorSynth(pl.LightningModule):
     """
     audio -> Estimator -> Synth -> audio
     """
-    def __init__(self, estimator, l_sched, sw_loss, synth_name=None, synth=None, lr=1e-3, decay_rate=0.99, perc_model=None, log_grad=True):
+    def __init__(self, model_cfg):
         super().__init__()
-        self.estimator = estimator
-        if synth_name is not None:
-            self.synth = construct_synths(synth_name)
+        self.estimator = hydra.utils.instantiate(model_cfg.estimator)
+        self.synth = construct_synths(model_cfg.synth_name)
+        self.est_out = nn.Linear(self.estimator.output_dim, self.synth.ext_param_size)
+        self.loss_w_sched = hydra.utils.instantiate(model_cfg.l_sched) # loss weighting
+        self.sw_loss = hydra.utils.instantiate(model_cfg.sw_loss) # reconstruction loss
+        if model_cfg.perc_model is not None:
+            self.perc_model = hydra.utils.instantiate(model_cfg.perc_model)
         else:
-            assert synth is not None
-            self.synth = synth
-        self.est_out = nn.Linear(estimator.output_dim, self.synth.ext_param_size)
-        self.loss_w_sched = l_sched
-        self.sw_loss = sw_loss # reconstruction loss
-        self.perc_model = perc_model
-        self.log_grad = log_grad
-        self.lr = lr
-        self.decay_rate = decay_rate
+            self.perc_model = None
+        self.log_grad = model_cfg.log_grad
+        self.lr = model_cfg.lr
+        self.decay_rate = model_cfg.decay_rate
         self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=16000)
+        self.save_hyperparameters()
 
     def param_loss(self, synth_output, param_dict):
         loss = 0
@@ -147,7 +148,7 @@ class EstimatorSynth(pl.LightningModule):
             losses = self.train_losses(batch_dict, outputs, loss_weights)
             self.log_dict({'train/'+k: v for k, v in losses.items()}, on_epoch=True, on_step=False)
             batch_loss = sum(losses.values())
-        self.log('total', batch_loss, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('train/total', batch_loss, prog_bar=True, on_epoch=True, on_step=False)
         return batch_loss
 
     def validation_step(self, batch_dict, batch_idx, dataloader_idx):
@@ -160,7 +161,25 @@ class EstimatorSynth(pl.LightningModule):
         losses = {prefix+k: v for k, v in losses.items()}
         self.log_dict(losses, prog_bar=True, on_epoch=True, on_step=False, add_dataloader_idx=False)
         return losses
-    
+
+    def get_progress_bar_dict(self):
+        # don't show the version number
+        items = super().get_progress_bar_dict()
+        items.pop("v_num", None)
+        items.pop("val_id/wave", None)
+        return items
+
+    def test_step(self, batch_dict, batch_idx, dataloader_idx):
+        # render audio
+        resyn_audio, outputs = self(batch_dict)
+        losses = self.train_losses(batch_dict, outputs)
+        eval_losses = self.monitor_losses(batch_dict, outputs)
+        losses.update(eval_losses)
+        prefix = 'val_id/' if dataloader_idx==0 else 'val_ood/'
+        losses = {prefix+k: v for k, v in losses.items()}
+        self.log_dict(losses, prog_bar=True, on_epoch=True, on_step=False, add_dataloader_idx=False)
+        return losses
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(list(self.estimator.parameters())+list(self.est_out.parameters()), self.lr)
         return {
