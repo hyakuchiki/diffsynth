@@ -16,18 +16,18 @@ def write_plot_audio(y, name):
     # write audio file
     sf.write('{0}.wav'.format(name), y, 16000)
     fig, ax = plt.subplots(figsize=(1.5, 1), tight_layout=True)
-    # ax.axis('off')
+    ax.axis('off')
     plot_spec(y, ax, 16000)
     fig.savefig('{0}.png'.format(name))
     plt.close(fig)
 
-def test_model(model, syn_loader, real_loader, device, sw_loss=None, perc_model=None):
+def test_model(model, id_loader, ood_loader, device, sw_loss=None, perc_model=None):
     model.eval()
     # in-domain
     syn_result = util.StatsLog()
     param_stats = [util.StatsLog(), util.StatsLog()]
     with torch.no_grad():
-        for data_dict in syn_loader:
+        for data_dict in id_loader:
             params = data_dict.pop('params')
             params = {name:tensor.to(device, non_blocking=True) for name, tensor in params.items()}
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
@@ -44,14 +44,15 @@ def test_model(model, syn_loader, real_loader, device, sw_loss=None, perc_model=
                         param_stats[0].add_entry(pname+'{0}'.format(i), pv)
 
             # Reconstruction loss
-            losses = model.losses(data_dict, outputs, sw_loss=sw_loss, perc_model=perc_model)
+            losses = model.train_losses(data_dict, outputs, sw_loss=sw_loss, perc_model=perc_model)
+            losses.update(model.monitor_losses(data_dict, outputs))
             syn_result.update(losses)
-    syn_result_dict = {'syn/'+k: v for k, v in syn_result.average().items()}
+    syn_result_dict = {'id/'+k: v for k, v in syn_result.average().items()}
     
     # out-of-domain
     real_result = util.StatsLog()
     with torch.no_grad():
-        for data_dict in real_loader:
+        for data_dict in ood_loader:
             data_dict = {name:tensor.to(device, non_blocking=True) for name, tensor in data_dict.items()}
 
             resyn_audio, outputs = model(data_dict)
@@ -65,9 +66,10 @@ def test_model(model, syn_loader, real_loader, device, sw_loss=None, perc_model=
                         param_stats[1].add_entry(pname+'{0}'.format(i), pv)
 
             # Reconstruction loss
-            losses = model.losses(data_dict, outputs, param_w=0, sw_loss=sw_loss, perc_model=perc_model)
+            losses = model.train_losses(data_dict, outputs, sw_loss=sw_loss, perc_model=perc_model)
+            losses.update(model.monitor_losses(data_dict, outputs))
             real_result.update(losses)
-    real_result_dict = {'real/'+k: v for k, v in real_result.average().items()}
+    real_result_dict = {'ood/'+k: v for k, v in real_result.average().items()}
     
     result = {}
     result.update(syn_result_dict)
@@ -77,7 +79,7 @@ def test_model(model, syn_loader, real_loader, device, sw_loss=None, perc_model=
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('ckpt',             type=str,   help='')
-    parser.add_argument('output_dir',         type=str,   help='')
+    parser.add_argument('--batch_size',     type=int,   default=64, help='')
     parser.add_argument('--write_audio',    action='store_true')
     args = parser.parse_args()
 
@@ -90,17 +92,17 @@ if __name__ == "__main__":
     hydra.initialize(config_path=config_dir, job_name="test")
     cfg = hydra.compose(config_name="config")
 
-    model = hydra.utils.instantiate(cfg.model)
+    model = EstimatorSynth(cfg.model)
     datamodule = hydra.utils.instantiate(cfg.data)
     datamodule.setup(None)
     id_test_loader, ood_test_loader = datamodule.test_dataloader()
-    model = EstimatorSynth.load_from_checkpoint(ckpt_dir, estimator=model.estimator, l_sched=model.loss_w_sched, sw_loss=model.sw_loss)
+    model = EstimatorSynth.load_from_checkpoint(ckpt_dir).to(device)
 
     # directory for audio/spectrogram output
-    output_dir = args.output_dir
+    output_dir = re.sub(r'tb_logs.*', 'test/output', ckpt_dir)
     os.makedirs(output_dir, exist_ok=True)
     # directory for ground-truth
-    target_dir = os.path.join(os.path.split(output_dir)[0], 'target')
+    target_dir = re.sub(r'tb_logs.*', 'test/target', ckpt_dir)
     os.makedirs(target_dir, exist_ok=True)
 
     id_testbatch = next(iter(id_test_loader))
@@ -129,7 +131,7 @@ if __name__ == "__main__":
             print('finished writing audio')
         
         # get objective measure
-        test_losses, param_stats = test_model(model, syn_loader=id_test_loader, real_loader=ood_test_loader, sw_loss=sw_loss, device=device)
+        test_losses, param_stats = test_model(model, id_loader=id_test_loader, ood_loader=ood_test_loader, device=device, sw_loss=sw_loss)
         results_str = 'Test loss: '
         for k in test_losses:
             results_str += '{0}: {1:.3f} '.format(k, test_losses[k])

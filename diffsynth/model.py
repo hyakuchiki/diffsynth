@@ -96,7 +96,9 @@ class EstimatorSynth(pl.LightningModule):
         synth_params = self.synth.calculate_params(params_dict, audio_length)
         return synth_params, conditioning
 
-    def train_losses(self, target, output, loss_w=None):
+    def train_losses(self, target, output, loss_w=None, sw_loss=None, perc_model=None):
+        sw_loss = self.sw_loss if sw_loss is None else sw_loss
+        perc_model = self.perc_model if perc_model is None else perc_model
         # always computes mean across batch dimension
         if loss_w is None:
             loss_w = {'param_w': 1.0, 'sw_w':1.0, 'perc_w':1.0}
@@ -109,14 +111,14 @@ class EstimatorSynth(pl.LightningModule):
         # Audio losses
         target_audio = target['audio']
         resyn_audio = output['output']
-        if loss_w['sw_w'] > 0.0 and self.sw_loss is not None:
+        if loss_w['sw_w'] > 0.0 and sw_loss is not None:
             # Reconstruction loss
-            spec_loss, wave_loss = self.sw_loss(target_audio, resyn_audio)
+            spec_loss, wave_loss = sw_loss(target_audio, resyn_audio)
             loss_dict['spec'], loss_dict['wave'] = loss_w['sw_w'] * spec_loss, loss_w['sw_w'] * wave_loss
         else:
             loss_dict['spec'], loss_dict['wave'] = (0, 0)
-        if loss_w['perc_w'] > 0.0 and self.perc_model is not None:
-            loss_dict['perc'] = loss_w['perc_w']*self.perc_model.perceptual_loss(target_audio, resyn_audio)
+        if loss_w['perc_w'] > 0.0 and perc_model is not None:
+            loss_dict['perc'] = loss_w['perc_w']*perc_model.perceptual_loss(target_audio, resyn_audio)
         else:
             loss_dict['perc'] = 0
         return loss_dict
