@@ -4,7 +4,11 @@ decay_rate: 0.99
 estimator:
   _target_: diffsynth.estimator.MelEstimator
   hidden_size: 512
-
+  channels: 64
+  sample_rate: 16000
+  n_fft: 1024
+  hop: 256
+  
 l_sched:
   _target_: diffsynth.schedules.ParamScheduler
   name: switch_1

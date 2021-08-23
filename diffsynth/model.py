@@ -143,7 +143,6 @@ class EstimatorSynth(pl.LightningModule):
             synth_params, _conditioning = self.get_params(batch_dict)
             # Parameter loss
             batch_loss = loss_weights['param_w'] * self.param_loss(synth_params, batch_dict['params'])
-            self.log('train/param', batch_loss, on_epoch=True, on_step=False)
         else:
             # render audio
             resyn_audio, outputs = self(batch_dict)

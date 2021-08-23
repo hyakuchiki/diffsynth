@@ -51,13 +51,14 @@ def amplitude_to_decibel(x, amin=1e-10, dynamic_range=80.0):
     return log_spec
 
 class PerceptualOpenl3(Perceptual):
-    def __init__(self, base_dir, input_repr='mel256', data='music', embed_size=512, sr=16000, hop_s=1.0):
+    def __init__(self, base_dir, input_repr='mel256', data='music', embed_size=512, sr=16000, hop_s=1.0, use_layers=None):
         super().__init__()
         assert input_repr in ['mel256', 'mel128']
         assert data in ['music', 'env']
         assert embed_size in [512, 6144]
         self.orig_sr = sr
         self.hop_s = hop_s
+        self.layers = use_layers
         model_name='torchopenl3_{0}_{1}_{2}.pth.tar'.format(input_repr, data, embed_size)
         print('loading', model_name)
         # model = ol3.models.PytorchOpenl3('_', input_repr, embed_size)
@@ -100,18 +101,27 @@ class PerceptualOpenl3(Perceptual):
         spec = spec[:, :, :ORIG_SIZE[1], 0]
         # [batch_slices, 257, 197, 1]
         melspec = torch.matmul(self.mel_fb, spec)
-        melspec = torch.sqrt(melspec)
+        melspec = torch.sqrt(melspec+1e-10)
         return amplitude_to_decibel(melspec)
 
-    def get_embed(self, x):
-        mel = self.stft_mel(x)
-        return self.model(mel.contiguous())
+    def get_embed(self, x, layers=None):
+        mel = self.stft_mel(x).contiguous()
+        if layers is not None: # [1,2, ..., 28?]
+            embeds = self.model(mel, keep_all_outputs=True)
+            return [embeds[i] for i in layers]
+        else:    
+            return self.model(mel)
 
     def perceptual_loss(self, target_audio, input_audio):
-        # output: (batch, freq, time, 1)
-        target_embed = self.get_embed(target_audio)
-        input_embed = self.get_embed(input_audio)
-        return (1 - F.cosine_similarity(target_embed, input_embed, dim=1)).mean()
+        target_embed = self.get_embed(target_audio, self.layers)
+        input_embed = self.get_embed(input_audio, self.layers)
+        if self.layers is not None:
+            loss = 0
+            for target_e, input_e in zip(target_embed, input_embed):
+                loss += (1 - F.cosine_similarity(target_e, input_e, dim=-1)).mean()
+            return loss / len(target_e)
+        else:
+            return (1 - F.cosine_similarity(target_embed, input_embed, dim=-1)).mean()
 
 def load_openl3_model(base_dir, input_repr='mel256', data='music', embed_size=512):
     assert input_repr in ['mel256', 'mel128', 'linear']
