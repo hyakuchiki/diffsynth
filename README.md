@@ -13,7 +13,6 @@ https://hyakuchiki.github.io/DiffSynthISMIR/
 
 ## To-do
 
-- Parallelized IIR Filter (CUDA)
 - Training with perceptual loss doesn't work
 
 ## Training
@@ -22,9 +21,9 @@ https://hyakuchiki.github.io/DiffSynthISMIR/
 	- `python train.py experiment=only_param_h2of trainer.gpus=1`
 - pretrain
 	- `python train.py experiment=pretrain_h2of trainer.gpus=1`
-- resume_real
+- resume real model
 	- `python train.py experiment=resume_real_h2of trainer.gpus=1  trainer.resume_from_checkpoint=[pretrain ckpt absolute path]`
-- resume_synth
+- resume synth model
 	- `python train.py experiment=resume_synth_h2of trainer.gpus=1  trainer.resume_from_checkpoint=[pretrain ckpt absolute path]`
 
 ## Notes

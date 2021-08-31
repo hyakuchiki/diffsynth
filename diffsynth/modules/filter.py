@@ -46,6 +46,10 @@ class FIRFilter(Processor):
 #         h_2 = 2 * y_lp - h_2
 #         return y_bp, y_lp, y_hp, h_1, h_2
 
+"""
+NOTE: SVF Filter is very slow
+"""
+
 class SVFLayer(nn.Module):
     def __init__(self):
         super().__init__()
