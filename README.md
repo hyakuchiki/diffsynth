@@ -28,5 +28,7 @@ https://hyakuchiki.github.io/DiffSynthISMIR/
 
 ## Notes
 
+Some code was ported to pytorch from [DDSP](https://github.com/magenta/ddsp) (Copyright 2019 Google LLC.).
+
 Several features have been added since ISMIR2021 (code is more readable, chorus effect, etc.)
 To reproduce results from ISMIR2021, revert to [Ver. May2021](https://github.com/hyakuchiki/diffsynth/commit/aca9585a8c0f8466166830dfed97bf222d7e1f40)
