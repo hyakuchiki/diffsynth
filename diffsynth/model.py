@@ -14,9 +14,8 @@ class EstimatorSynth(pl.LightningModule):
     """
     def __init__(self, model_cfg):
         super().__init__()
-        self.estimator = hydra.utils.instantiate(model_cfg.estimator)
         self.synth = construct_synths(model_cfg.synth_name)
-        self.est_out = nn.Linear(self.estimator.output_dim, self.synth.ext_param_size)
+        self.estimator = hydra.utils.instantiate(model_cfg.estimator, output_dim=self.synth.ext_param_size)
         self.loss_w_sched = hydra.utils.instantiate(model_cfg.l_sched) # loss weighting
         self.sw_loss = hydra.utils.instantiate(model_cfg.sw_loss) # reconstruction loss
         if model_cfg.perc_model is not None:
@@ -48,9 +47,7 @@ class EstimatorSynth(pl.LightningModule):
         Returns:
             torch.Tensor: estimated parameters in Tensor ranged 0~1
         """
-        conditioning = self.estimator(conditioning)
-        conditioning['est_param'] = torch.sigmoid(self.est_out(conditioning['est_param']))
-        return conditioning['est_param'], conditioning
+        return self.estimator(conditioning['audio'])
 
     def log_param_grad(self, params_dict):
         def save_grad(name):
@@ -75,7 +72,7 @@ class EstimatorSynth(pl.LightningModule):
             torch.Tensor: audio
         """
         audio_length = conditioning['audio'].shape[1]
-        est_param, conditioning = self.estimate_param(conditioning)
+        est_param = self.estimate_param(conditioning)
         params_dict = self.synth.fill_params(est_param, conditioning)
         if self.log_grad is not None:
             self.log_param_grad(params_dict)
@@ -88,13 +85,13 @@ class EstimatorSynth(pl.LightningModule):
         Don't render audio
         """
         audio_length = conditioning['audio'].shape[1]
-        est_param, conditioning = self.estimate_param(conditioning)
+        est_param = self.estimate_param(conditioning)
         params_dict = self.synth.fill_params(est_param, conditioning)
         if self.log_grad is not None:
             self.log_param_grad(params_dict)
         
         synth_params = self.synth.calculate_params(params_dict, audio_length)
-        return synth_params, conditioning
+        return synth_params
 
     def train_losses(self, target, output, loss_w=None, sw_loss=None, perc_model=None):
         sw_loss = self.sw_loss if sw_loss is None else sw_loss
@@ -140,7 +137,7 @@ class EstimatorSynth(pl.LightningModule):
         self.log_dict({'lw/'+k: v for k, v in loss_weights.items()}, on_epoch=True, on_step=False)
         if loss_weights['sw_w']+loss_weights['perc_w'] == 0:
             # do not render audio because reconstruction is unnecessary
-            synth_params, _conditioning = self.get_params(batch_dict)
+            synth_params = self.get_params(batch_dict)
             # Parameter loss
             batch_loss = loss_weights['param_w'] * self.param_loss(synth_params, batch_dict['params'])
         else:
@@ -182,7 +179,7 @@ class EstimatorSynth(pl.LightningModule):
         return losses
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(list(self.estimator.parameters())+list(self.est_out.parameters()), self.lr)
+        optimizer = torch.optim.Adam(self.estimator.parameters(), self.lr)
         return {
         "optimizer": optimizer,
         "lr_scheduler": {
