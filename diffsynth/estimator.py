@@ -6,11 +6,12 @@ from diffsynth.util import midi_to_hz, hz_to_midi
 from diffsynth.layers import Resnet1D, Normalize2d
 from diffsynth.spectral import MelSpec, Mfcc
 from diffsynth.transforms import LogTransform
+from nnAudio.Spectrogram import MelSpectrogram, MFCC
 
 class MFCCEstimator(nn.Module):
     def __init__(self, output_dim, n_mels=128, n_mfccs=30, n_fft=1024, hop=256, sample_rate=16000, num_layers=2, hidden_size=512, dropout_p=0.0, norm='instance'):
         super().__init__()
-        self.mfcc = Mfcc(n_fft, hop, n_mels, n_mfccs, f_min=20, sample_rate=sample_rate)
+        self.mfcc = MFCC(sr=sample_rate, n_mfcc=n_mfccs, norm='ortho', verbose=True, hop_length=hop, n_fft=n_fft, n_mels=n_mels, center=True, sample_rate=sample_rate)
         self.norm = Normalize2d(norm) if norm else None
         self.gru = nn.GRU(n_mfccs, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True)
         self.output_dim = output_dim
@@ -31,7 +32,7 @@ class MelEstimator(nn.Module):
         super().__init__()
         self.n_mels = n_mels
         self.channels = channels
-        self.logmel = nn.Sequential(MelSpec(n_fft=n_fft, hop_length=hop, n_mels=n_mels, sample_rate=sample_rate), LogTransform())
+        self.logmel = nn.Sequential(MelSpectrogram(sr=sample_rate, n_fft=n_fft, n_mels=n_mels, hop_length=hop, center=True, power=1.0, htk=True, trainable_mel=False, trainable_STFT=False), LogTransform())
         self.norm = Normalize2d(norm) if norm else None
         # Regular Conv
         self.convs = nn.ModuleList(
