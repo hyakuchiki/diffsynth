@@ -4,7 +4,6 @@ import torch.nn as nn
 
 from diffsynth.util import midi_to_hz, hz_to_midi
 from diffsynth.layers import Resnet1D, Normalize2d
-from diffsynth.spectral import MelSpec, Mfcc
 from diffsynth.transforms import LogTransform
 from nnAudio.Spectrogram import MelSpectrogram, MFCC
 
