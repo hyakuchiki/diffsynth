@@ -51,7 +51,7 @@ def amplitude_to_decibel(x, amin=1e-10, dynamic_range=80.0):
     return log_spec
 
 class PerceptualOpenl3(Perceptual):
-    def __init__(self, base_dir, input_repr='mel256', data='music', embed_size=512, sr=16000, hop_s=1.0, use_layers=None):
+    def __init__(self, input_repr='mel256', data='music', embed_size=512, sr=16000, hop_s=1.0, use_layers=None):
         super().__init__()
         assert input_repr in ['mel256', 'mel128']
         assert data in ['music', 'env']

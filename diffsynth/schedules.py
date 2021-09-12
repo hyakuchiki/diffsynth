@@ -55,7 +55,7 @@ switch_p = {
     # reconstruction (spectral/wave) loss weight
     'sw_w': functools.partial(linear_anneal, end_value=1.0, start_value=0.0, start=12500, warm=37500),
     # perceptual loss based on ae
-    'perc_w': functools.partial(linear_anneal, end_value=10.0, start_value=0.0, start=12500, warm=37500),
+    'perc_w': functools.partial(linear_anneal, end_value=0.01, start_value=0.0, start=12500, warm=37500),
 }
 SCHEDULE_REGISTRY['switch_p'] = switch_p
 
