@@ -12,3 +12,4 @@ scripts/
 output/
 outputs/
 myenv.yaml
+configs/exp
