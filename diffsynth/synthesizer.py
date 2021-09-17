@@ -89,7 +89,7 @@ class Synthesizer(nn.Module):
             dag_input[param_name] = value
         return dag_input
 
-    def forward(self, dag_inputs, n_samples=None):
+    def forward(self, dag_inputs, n_samples):
         """runs input through DAG of processors
 
         Args:
@@ -120,7 +120,7 @@ class Synthesizer(nn.Module):
         
         return outputs['output'], outputs
 
-    def calculate_params(self, dag_inputs, n_samples=None):
+    def calculate_params(self, dag_inputs):
         """ runs input through DAG of processors
             but don't render audio
         """

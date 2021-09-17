@@ -84,13 +84,12 @@ class EstimatorSynth(pl.LightningModule):
         """
         Don't render audio
         """
-        audio_length = conditioning['audio'].shape[1]
         est_param = self.estimate_param(conditioning)
         params_dict = self.synth.fill_params(est_param, conditioning)
         if self.log_grad is not None:
             self.log_param_grad(params_dict)
         
-        synth_params = self.synth.calculate_params(params_dict, audio_length)
+        synth_params = self.synth.calculate_params(params_dict)
         return synth_params
 
     def train_losses(self, target, output, loss_w=None, sw_loss=None, perc_model=None):

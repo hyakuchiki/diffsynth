@@ -19,9 +19,8 @@ class Harmor(Gen):
     Then a low-pass filter applied to all
     """
 
-    def __init__(self, n_samples=16000, sample_rate=16000, name='harmor', n_harmonics=24, sep_amp=False, n_oscs=2):
+    def __init__(self, sample_rate=16000, name='harmor', n_harmonics=24, sep_amp=False, n_oscs=2):
         super().__init__(name=name)
-        self.n_samples = n_samples
         self.sample_rate = sample_rate
         self.n_harmonics = n_harmonics
         self.sep_amp = sep_amp
@@ -46,7 +45,7 @@ class Harmor(Gen):
             }
         
 
-    def forward(self, amplitudes, osc_mix, f0_hz, f0_mult, cutoff, q, n_samples=None):
+    def forward(self, amplitudes, osc_mix, f0_hz, f0_mult, cutoff, q, n_samples):
         """Synthesize audio with additive synthesizer from controls.
 
         Args:
@@ -60,9 +59,6 @@ class Harmor(Gen):
         Returns:
         signal: A tensor of harmonic waves of shape [batch, n_samples].
         """
-        if n_samples is None:
-            n_samples = self.n_samples
-
         batch, n_frames, _ = f0_hz.shape
         first_mult = torch.ones(batch, n_frames, 1).to(f0_hz.device)
         f0_mult = f0_mult.expand(-1, n_frames, -1)
