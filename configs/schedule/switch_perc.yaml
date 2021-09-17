@@ -1,0 +1,22 @@
+name: switch_perc
+
+param_w:
+  type: linear
+  start: 12500
+  warm: 37500
+  start_v: 10.0
+  end_v: 0.0
+
+sw_w:
+  type: linear
+  start: 12500
+  warm: 37500
+  start_v: 0.0
+  end_v: 1.0
+
+perc_w:
+  type: linear
+  start: 12500
+  warm: 37500
+  start_v: 0.0
+  end_v: 0.1

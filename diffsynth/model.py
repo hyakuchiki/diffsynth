@@ -5,18 +5,19 @@ import torch.nn.functional as F
 import diffsynth.util as util
 from diffsynth.spectral import compute_lsd, loudness_loss, Mfcc
 import pytorch_lightning as pl
-from diffsynth.modelutils import construct_synths
+from diffsynth.modelutils import construct_synth_from_conf
+from diffsynth.schedules import ParamSchedule
 import hydra
 
 class EstimatorSynth(pl.LightningModule):
     """
     audio -> Estimator -> Synth -> audio
     """
-    def __init__(self, model_cfg):
+    def __init__(self, model_cfg, synth_cfg, sched_cfg):
         super().__init__()
-        self.synth = construct_synths(model_cfg.synth_name)
+        self.synth = construct_synth_from_conf(synth_cfg)
         self.estimator = hydra.utils.instantiate(model_cfg.estimator, output_dim=self.synth.ext_param_size)
-        self.loss_w_sched = hydra.utils.instantiate(model_cfg.l_sched) # loss weighting
+        self.loss_w_sched = ParamSchedule(sched_cfg) # loss weighting
         self.sw_loss = hydra.utils.instantiate(model_cfg.sw_loss) # reconstruction loss
         if model_cfg.perc_model is not None:
             self.perc_model = hydra.utils.instantiate(model_cfg.perc_model)

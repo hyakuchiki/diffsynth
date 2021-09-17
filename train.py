@@ -9,9 +9,9 @@ from diffsynth.model import EstimatorSynth
 def main(cfg):
     pl.seed_everything(0, workers=True)
     warnings.simplefilter('ignore', RuntimeWarning)
-    model = EstimatorSynth(cfg.model)
+    model = EstimatorSynth(cfg.model, cfg.synth, cfg.schedule)
     logger = pl.loggers.TensorBoardLogger("tb_logs", "", default_hp_metric=False, version='')
-    hparams = {'data': cfg.data.train_type, 'schedule': cfg.model.l_sched.name, 'synth': cfg.model.synth_name}
+    hparams = {'data': cfg.data.train_type, 'schedule': cfg.schedule.name, 'synth': cfg.synth.name}
     # dummy value
     logger.log_hyperparams(hparams, {'val_id/lsd': 40, 'val_ood/lsd': 40})
     # log audio examples

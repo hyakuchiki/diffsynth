@@ -2,5 +2,7 @@ defaults:
   - trainer: default.yaml
   - model: default.yaml
   - data: trainid.yaml
+  - synth: h2of.yaml
+  - schedule: switch.yaml
   - experiment: null
   - exp: null

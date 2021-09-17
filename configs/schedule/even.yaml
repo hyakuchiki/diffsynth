@@ -1,0 +1,15 @@
+name: even
+
+param_w:
+  type: linear
+  start: 12500
+  warm: 37500
+  start_v: 10.0
+  end_v: 5.0
+
+sw_w:
+  type: linear
+  start: 12500
+  warm: 37500
+  start_v: 0.0
+  end_v: 0.5

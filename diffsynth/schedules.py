@@ -16,6 +16,36 @@ required_args =    ['param_w', # parameter loss
                     'perc_w', # perceptual loss
                     ]
 
+class ParamSchedule():
+    def __init__(self, sched_cfg):
+        self.sched = {}
+        for param_name, param_sched in sched_cfg.items():
+            if param_name == 'name':
+                continue 
+            if isinstance(param_sched, int):
+                self.sched[param_name] = param_sched
+                continue
+            if param_sched['type'] == 'linear':
+                self.sched[param_name] = functools.partial(linear_anneal, 
+                    start=param_sched['start'], 
+                    warm=param_sched['warm'],
+                    start_value=param_sched['start_v'],
+                    end_value=param_sched['end_v'])
+            else:
+                raise ValueError()
+        for k in required_args:
+            if k not in self.sched:
+                self.sched[k] = 0.0
+
+    def get_parameters(self, cur_step):
+        cur_param = {}
+        for param_name, param_func in self.sched.items():
+            cur_param[param_name] = param_func(i=cur_step) if callable(param_func) else param_func
+        return cur_param
+
+
+# Below is defunct
+
 SCHEDULE_REGISTRY = {}
 
 class ParamScheduler():
