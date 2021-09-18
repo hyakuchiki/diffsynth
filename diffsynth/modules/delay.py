@@ -9,9 +9,9 @@ class ModulatedDelay(Processor):
     """
     Use with LFO to create flanger/vibrato/chorus
     """
-    def __init__(self, name='chorus', sr=16000):
+    def __init__(self, name='chorus', sample_rate=16000):
         super().__init__(name)
-        self.sr = sr
+        self.sr = sample_rate
         self.param_desc = {
             'audio':    {'size': 1,     'range': (-1, 1),       'type': 'raw'},
             'delay_ms': {'size': 1,     'range': (1, 10.0),     'type': 'sigmoid'}, #ms

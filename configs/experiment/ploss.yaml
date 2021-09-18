@@ -8,8 +8,8 @@ defaults:
   - override /schedule: param.yaml
 
 data:
-  id_dir: /home/n_masuda/Datasets/diffsynth_5-6/harmor_2oscfree
-  ood_dir: /home/n_masuda/Datasets/nsynth-train
+  id_dir: data/diffsynth_5-6/harmor_2oscfree
+  ood_dir: data/nsynth-train
   batch_size: 64
   train_type: id
 

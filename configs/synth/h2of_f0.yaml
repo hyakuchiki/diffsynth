@@ -1,0 +1,18 @@
+name: harmor_2oscfree
+dag:
+  harmor:
+    config:
+      _target_: diffsynth.modules.harmor.Harmor
+      sample_rate: ${data.sample_rate}
+      sep_amp: true
+      n_oscs: 2
+    connections:
+      amplitudes: AMP
+      osc_mix: M_OSC
+      f0_hz: f0_hz
+      f0_mult: MULT
+      cutoff: CUTOFF
+      q: Q_FILT
+fixed_params:
+  f0_hz: null
+static_params: [f0_hz, M_OSC, MULT, Q_FILT]

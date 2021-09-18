@@ -33,6 +33,8 @@ class EstimatorSynth(pl.LightningModule):
         loss = 0
         for k, target in param_dict.items():
             output_name = self.synth.dag_summary[k]
+            if output_name in self.synth.fixed_param_names:
+                continue
             x = synth_output[output_name]
             if target.shape[1] > 1:
                 x = util.resample_frames(x, target.shape[1])

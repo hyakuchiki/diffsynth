@@ -41,7 +41,7 @@ class Harmor(Gen):
             'f0_hz':            {'size': 1, 'range': FREQ_RANGE, 'type': 'freq_sigmoid'},
             'f0_mult':          {'size': self.n_oscs-1, 'range': (1, 8), 'type': 'sigmoid'},
             'cutoff':           {'size': 1, 'range': (30.0, self.sample_rate/2), 'type': 'freq_sigmoid'},
-            'q':                {'size': 1, 'range': (0.0, 2.0), 'type': 'sigmoid'}
+            'q':                {'size': 1, 'range': (0.1, 2.0), 'type': 'sigmoid'}
             }
         
 
@@ -59,7 +59,9 @@ class Harmor(Gen):
         Returns:
         signal: A tensor of harmonic waves of shape [batch, n_samples].
         """
-        batch, n_frames, _ = f0_hz.shape
+        batch, n_frames, _ = amplitudes.shape
+        if f0_hz.shape[1] != n_frames:
+            f0_hz = util.resample_frames(f0_hz, n_frames)
         first_mult = torch.ones(batch, n_frames, 1).to(f0_hz.device)
         f0_mult = f0_mult.expand(-1, n_frames, -1)
         f0_mult = torch.cat([first_mult, f0_mult], dim=-1)

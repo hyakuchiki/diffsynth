@@ -18,3 +18,5 @@ sw_loss:
 perc_model: null
 
 log_grad: true
+
+f0_encoder: null

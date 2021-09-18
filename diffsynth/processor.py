@@ -10,7 +10,7 @@ SCALE_FNS = {
     'exp_sigmoid': lambda x, low, high: util.exp_scale(x, math.log(10.0), high, 1e-7+low),
 }
 
-FREQ_RANGE = (27.5, 4186) # MIDI 21-108
+FREQ_RANGE = (32, 2000) # MIDI C1=32.7 B6=1975.5
 
 class Processor(nn.Module):
     def __init__(self, name):
