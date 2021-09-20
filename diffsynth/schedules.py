@@ -22,7 +22,7 @@ class ParamSchedule():
         for param_name, param_sched in sched_cfg.items():
             if param_name == 'name':
                 continue 
-            if isinstance(param_sched, int):
+            if isinstance(param_sched, float):
                 self.sched[param_name] = param_sched
                 continue
             if param_sched['type'] == 'linear':
