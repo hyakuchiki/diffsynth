@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Subset, Dataset, DataLoader, random_split
 import pytorch_lightning as pl
 import numpy as np
-from diffsynth.f0 import compute_f0
+from diffsynth.f0 import process_f0
 
 class WaveParamDataset(Dataset):
     def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True, domain=0, f0=False):
@@ -18,6 +18,10 @@ class WaveParamDataset(Dataset):
         self.f0 = f0
         if f0:
             self.f0_dir = os.path.join(base_dir, 'f0')
+            assert os.path.exists(self.f0_dir)
+            # all the f0 files should already be written
+            # with the same name as the audio
+            self.f0_files = sorted(glob.glob(os.path.join(self.f0_dir, '*.pt')))
         if params:
             self.param_dir = os.path.join(base_dir, 'param')
             assert os.path.exists(self.param_dir)
@@ -30,15 +34,9 @@ class WaveParamDataset(Dataset):
         assert audio.shape[0] == self.length * self.sample_rate
         data = {'audio': audio}
         if self.f0:
-            basename = os.path.basename(raw_path)
-            f0_file = os.path.join(self.f0_dir, basename[:-4]+'.pt')
-            if os.path.exists(f0_file):
-                f0 = torch.load(f0_file)
-            else:
-                # f0 is not computed yet
-                f0 = compute_f0(torch.from_numpy(audio), self.sample_rate)
-                torch.save(f0, f0_file)
-            data['f0_hz'] = f0.unsqueeze(-1)
+            f0, periodicity = torch.load(self.f0_files[idx])
+            f0_hz = process_f0(f0, periodicity)
+            data['f0_hz'] = f0_hz.unsqueeze(-1)
         if self.params:
             params = torch.load(self.param_files[idx])
             data['params'] = params
