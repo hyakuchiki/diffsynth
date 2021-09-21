@@ -1,7 +1,7 @@
 import os, glob
 import librosa
 import torch
-from torch.utils.data import Subset, Dataset, DataLoader, random_split
+from torch.utils.data import Subset, Dataset, DataLoader, random_split, ConcatDataset
 import pytorch_lightning as pl
 import numpy as np
 from diffsynth.f0 import process_f0
@@ -50,7 +50,7 @@ class IdOodDataModule(pl.LightningDataModule):
         super().__init__()
         self.id_dir = id_dir
         self.ood_dir = ood_dir
-        assert train_type in ['id', 'ood']
+        assert train_type in ['id', 'ood', 'mixed']
         self.train_type = train_type
         self.splits = splits
         self.sr = sample_rate
@@ -75,10 +75,17 @@ class IdOodDataModule(pl.LightningDataModule):
         indices = np.random.choice(len(ood_dat), len(id_dat), replace=False)
         ood_dat = Subset(ood_dat, indices)
         ood_datasets = self.create_split(ood_dat)
-        assert len(id_datasets['train']) == len(ood_datasets['train'])
-        self.train_dataset = id_datasets['train'] if self.train_type=='id' else ood_datasets['train']
         self.id_datasets = id_datasets
         self.ood_datasets = ood_datasets
+        assert len(id_datasets['train']) == len(ood_datasets['train'])
+        dataset_len = len(id_datasets['train'])
+        if self.train_type=='id':
+            self.train_dataset = id_datasets['train']
+        elif self.train_type=='ood':
+            self.train_dataset = ood_datasets['train']
+        elif self.train_type=='mixed':
+            self.train_dataset = ConcatDataset([id_datasets['train'][:dataset_len//2], ood_datasets['train'][:dataset_len//2]])
+            assert len(self.train_dataset) == dataset_len
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.batch_size,
