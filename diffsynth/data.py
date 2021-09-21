@@ -1,13 +1,30 @@
-import os, glob
+import os, glob, functools
 import librosa
 import torch
-from torch.utils.data import Subset, Dataset, DataLoader, random_split, ConcatDataset
+from torch.utils.data import Subset, Dataset, DataLoader, random_split, ConcatDataset, SubsetRandomSampler, BatchSampler
 import pytorch_lightning as pl
 import numpy as np
 from diffsynth.f0 import process_f0
 
+def mix_iterable(dl_a, dl_b):
+    for i, j in zip(dl_a, dl_b):
+        yield i
+        yield j
+
+class ReiteratableWrapper():
+    def __init__(self, f, length):
+        self._f = f
+        self.length = length
+
+    def __iter__(self):
+        # make generator
+        return self._f()
+
+    def __len__(self):
+        return self.length
+
 class WaveParamDataset(Dataset):
-    def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True, domain=0, f0=False):
+    def __init__(self, base_dir, sample_rate=16000, length=4.0, params=True, f0=False):
         self.base_dir = base_dir
         self.audio_dir = os.path.join(base_dir, 'audio')
         self.raw_files = sorted(glob.glob(os.path.join(self.audio_dir, '*.wav')))
@@ -68,28 +85,38 @@ class IdOodDataModule(pl.LightningDataModule):
         return {'train': dset_train, 'valid': dset_valid, 'test': dset_test}
 
     def setup(self, stage):
-        id_dat = WaveParamDataset(self.id_dir, self.sr, self.l, True, 0, self.f0)
+        id_dat = WaveParamDataset(self.id_dir, self.sr, self.l, True, self.f0)
         id_datasets = self.create_split(id_dat)
         # ood should be the same size as in-domain
-        ood_dat = WaveParamDataset(self.ood_dir, self.sr, self.l, False, 1, self.f0)
+        ood_dat = WaveParamDataset(self.ood_dir, self.sr, self.l, False, self.f0)
         indices = np.random.choice(len(ood_dat), len(id_dat), replace=False)
         ood_dat = Subset(ood_dat, indices)
         ood_datasets = self.create_split(ood_dat)
         self.id_datasets = id_datasets
         self.ood_datasets = ood_datasets
         assert len(id_datasets['train']) == len(ood_datasets['train'])
-        dataset_len = len(id_datasets['train'])
-        if self.train_type=='id':
-            self.train_dataset = id_datasets['train']
-        elif self.train_type=='ood':
-            self.train_dataset = ood_datasets['train']
-        elif self.train_type=='mixed':
-            self.train_dataset = ConcatDataset([id_datasets['train'][:dataset_len//2], ood_datasets['train'][:dataset_len//2]])
-            assert len(self.train_dataset) == dataset_len
+        if self.train_type == 'mixed':
+            dat_len = len(id_datasets['train'])
+            indices = np.random.choice(dat_len, dat_len//2, replace=False)
+            self.train_set = ConcatDataset([Subset(id_datasets['train'], indices), Subset(ood_datasets['train'], indices)])
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size,
+        if self.train_type=='id':
+            return DataLoader(self.id_datasets['train'], batch_size=self.batch_size,
                           num_workers=self.num_workers, shuffle=True)
+        elif self.train_type=='ood':
+            return DataLoader(self.ood_datasets['train'], batch_size=self.batch_size,
+                            num_workers=self.num_workers, shuffle=True)
+        elif self.train_type=='mixed':
+            id_indices = list(range(len(self.train_set)//2))
+            ood_indices = list(range(len(self.train_set)//2, len(self.train_set)))
+            id_samp = SubsetRandomSampler(id_indices)
+            ood_samp = SubsetRandomSampler(ood_indices)
+            id_batch_samp = BatchSampler(id_samp, batch_size=self.batch_size, drop_last=False)
+            ood_batch_samp = BatchSampler(ood_samp, batch_size=self.batch_size, drop_last=False)
+            generator = functools.partial(mix_iterable, id_batch_samp, ood_batch_samp)
+            b_sampler = ReiteratableWrapper(generator, len(id_batch_samp)+len(ood_batch_samp))
+            return DataLoader(self.train_set, batch_sampler=b_sampler, num_workers=self.num_workers)
 
     def val_dataloader(self):
         return [DataLoader(self.id_datasets["valid"], batch_size=self.batch_size, num_workers=self.num_workers),
