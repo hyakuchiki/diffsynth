@@ -15,4 +15,4 @@ dag:
       q: Q_FILT
 fixed_params:
   f0_hz: null
-static_params: [f0_hz, M_OSC, MULT, Q_FILT]
+static_params: [M_OSC, MULT, Q_FILT]
