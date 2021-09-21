@@ -2,10 +2,12 @@ import math
 import torch
 import torch.nn as nn
 
-from diffsynth.util import midi_to_hz, hz_to_midi
+from diffsynth.util import resample_frames
 from diffsynth.layers import Resnet1D, Normalize2d
 from diffsynth.transforms import LogTransform
 from nnAudio.Spectrogram import MelSpectrogram, MFCC
+
+from diffsynth.f0 import FMIN, FMAX
 
 class MFCCEstimator(nn.Module):
     def __init__(self, output_dim, n_mels=128, n_mfccs=30, n_fft=1024, hop=256, sample_rate=16000, num_layers=2, hidden_size=512, dropout_p=0.0, norm='instance'):
@@ -72,6 +74,30 @@ class MelEstimator(nn.Module):
             l = (l + 2 * conv_module.padding[0] - conv_module.dilation[0] * (conv_module.kernel_size[0] - 1) - 1) // conv_module.stride[0] + 1
             lengths.append(l)
         return lengths
+
+class F0MelEstimator(MelEstimator):
+    def __init__(self, output_dim, n_mels=128, n_fft=1024, hop=256, sample_rate=16000, channels=64, kernel_size=7, strides=[2,2,2], num_layers=1, hidden_size=512, dropout_p=0.0, norm='batch'):
+        super().__init__(output_dim, n_mels, n_fft, hop, sample_rate, channels, kernel_size, strides, num_layers, hidden_size, dropout_p, norm)
+        self.gru = nn.GRU(self.l_out * channels + 1, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True)
+
+    def forward(self, audio, f0):
+        x = self.logmel(audio)
+        x = self.norm(x)
+        batch_size, n_mels, n_frames = x.shape
+        x = x.permute(0, 2, 1).contiguous()
+        x = x.view(-1, self.n_mels).unsqueeze(1)
+        # x: [batch_size*n_frames, 1, n_mels]
+        for i, conv in enumerate(self.convs):
+            x = conv(x)
+        x = x.view(batch_size, n_frames, self.channels, self.l_out)
+        x = x.view(batch_size, n_frames, -1)
+        f0 = resample_frames(f0, n_frames)
+        f0 = (f0-FMIN)/(FMAX-FMIN)
+        x = torch.cat([x, f0], dim=-1)
+        output, _hidden = self.gru(x)
+        # output: [batch_size, n_frames, self.output_dim]
+        output = self.out(output)
+        return torch.sigmoid(output)
 
 frame_setting_stride = {
     # n_downsample, stride

@@ -4,6 +4,9 @@ import torch.nn as nn
 import torchcrepe  
 import functools
 
+FMIN = 32
+FMAX = 2000
+
 def process_f0(f0_hz, periodicity):
     # Shape [1, 1 + int(time // hop_length,]
     # Postprocessing on f0_hz
@@ -39,7 +42,7 @@ def compute_f0(audio, sample_rate):
     # uses viterbi by default
     # pad=False is probably center=False
     # [output_shape=(1, 1 + int(time // hop_length))]
-    f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=128, pad=False, device='cuda', batch_size=2048, model='full', fmin=32, fmax=2000, return_periodicity=True)
+    f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=128, pad=False, device='cuda', batch_size=2048, model='full', fmin=FMIN, fmax=FMAX, return_periodicity=True)
     return f0_hz, periodicity
 
 def write_f0(audiofile, f0_dir, duration, overwrite):

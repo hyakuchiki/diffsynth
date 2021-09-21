@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 from diffsynth.modelutils import construct_synth_from_conf
 from diffsynth.schedules import ParamSchedule
 import hydra
+from diffsynth.estimator import F0MelEstimator
 
 class EstimatorSynth(pl.LightningModule):
     """
@@ -50,6 +51,8 @@ class EstimatorSynth(pl.LightningModule):
         Returns:
             torch.Tensor: estimated parameters in Tensor ranged 0~1
         """
+        if isinstance(self.estimator, F0MelEstimator):
+            return self.estimator(conditioning['audio'], conditioning['f0_hz'])
         return self.estimator(conditioning['audio'])
 
     def log_param_grad(self, params_dict):
