@@ -92,7 +92,7 @@ if __name__ == "__main__":
     hydra.initialize(config_path=config_dir, job_name="test")
     cfg = hydra.compose(config_name="config")
 
-    model = EstimatorSynth(cfg.model)
+    model = EstimatorSynth(cfg.model, cfg.synth, cfg.schedule)
     datamodule = hydra.utils.instantiate(cfg.data)
     datamodule.setup(None)
     id_test_loader, ood_test_loader = datamodule.test_dataloader()
