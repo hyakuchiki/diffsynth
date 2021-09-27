@@ -35,7 +35,7 @@ def test_model(model, id_loader, ood_loader, device, sw_loss=None, perc_model=No
 
             resyn_audio, outputs = model(data_dict)
             # parameter values
-            monitor_params = [model.synth.dag_summary[k] for k in params.keys()]
+            monitor_params = list(params.keys())
             for pname, pvalue in outputs.items():
                 if pname in monitor_params:
                     # pvalue: batch, n_frames, param_dim>=1
@@ -57,7 +57,7 @@ def test_model(model, id_loader, ood_loader, device, sw_loss=None, perc_model=No
 
             resyn_audio, outputs = model(data_dict)
             # parameter values
-            monitor_params = [model.synth.dag_summary[k] for k in params.keys()]
+            monitor_params = list(params.keys())
             for pname, pvalue in outputs.items():
                 if pname in monitor_params:
                     # pvalue: batch, n_frames, param_dim>=1

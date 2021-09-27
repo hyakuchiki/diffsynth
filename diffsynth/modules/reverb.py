@@ -30,7 +30,7 @@ class DecayReverb(Processor):
         self.param_desc = {
                 'audio':    {'size': 1, 'range': (-1, 1),       'type': 'raw'},
                 'gain':     {'size': 1, 'range': (0, 0.25),      'type': 'exp_sigmoid'}, 
-                'decay':    {'size': 1, 'range': (2.0, 25.0),    'type': 'sigmoid'}, 
+                'decay':    {'size': 1, 'range': (10.0, 25.0),    'type': 'sigmoid'}, 
                 }
 
     def forward(self, audio, gain, decay):

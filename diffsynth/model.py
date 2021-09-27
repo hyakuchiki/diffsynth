@@ -33,10 +33,11 @@ class EstimatorSynth(pl.LightningModule):
     def param_loss(self, synth_output, param_dict):
         loss = 0
         for k, target in param_dict.items():
-            output_name = self.synth.dag_summary[k]
-            if output_name in self.synth.fixed_param_names:
+            if k in self.synth.fixed_param_names:
                 continue
-            x = synth_output[output_name]
+            if target.numel() == 0:
+                continue
+            x = synth_output[k]
             if target.shape[1] > 1:
                 x = util.resample_frames(x, target.shape[1])
             loss += F.l1_loss(x, target)
@@ -95,8 +96,8 @@ class EstimatorSynth(pl.LightningModule):
         if self.log_grad is not None:
             self.log_param_grad(params_dict)
         
-        synth_params = self.synth.calculate_params(params_dict)
-        return synth_params
+        # synth_params = self.synth.calculate_params(params_dict)
+        return params_dict
 
     def train_losses(self, target, output, loss_w=None, sw_loss=None, perc_model=None):
         sw_loss = self.sw_loss if sw_loss is None else sw_loss

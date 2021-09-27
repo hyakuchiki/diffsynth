@@ -47,5 +47,3 @@ dag:
 fixed_params:
   AMP_FLOOR: 0
 static_params: [BFRQ, M_OSC, DUMMY, Q_FILT, NOISE_C, NOISE_A, AT_A, DE_A, SU_A, RE_A, AMP_FLOOR, PEAK_A, AT_C, DE_C, SU_C, RE_C, CUT_FLOOR, PEAK_C, NOTE_OFF]
-# save note off for only enva (same as envc)
-save_params: [enva_peak, enva_attack, enva_decay, enva_sus_level, enva_release, enva_note_off, envc_floor, envc_peak, envc_attack, envc_decay, envc_sus_level, envc_release, harmor_osc_mix, harmor_f0_hz, harmor_q]

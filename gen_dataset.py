@@ -25,7 +25,6 @@ if __name__ == "__main__":
 
     conf = OmegaConf.load(args.synth_conf)
     synth = construct_synth_from_conf(conf).to('cuda')
-    save_params = conf.save_params
 
     audio_dir, param_dir = make_dirs(args.dataset_dir, conf.name)
 
@@ -33,13 +32,14 @@ if __name__ == "__main__":
     count = 0
     break_flag = False
     skip_count = 0
+    ext_params = list(synth.ext_param_sizes.keys())
     with torch.no_grad():
         with tqdm.tqdm(total=args.data_size) as pbar:
             while True:
                 if break_flag:
                     break
                 audio, output = synth.uniform(args.batch_size, n_samples, 'cuda')
-                params = {k: output[synth.dag_summary[k]].cpu() for k in save_params}
+                params = {k: output[k].cpu() for k in ext_params}
                 for j in range(args.batch_size):
                     if count >= args.data_size:
                         break_flag=True

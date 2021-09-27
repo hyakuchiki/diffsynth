@@ -1,16 +1,13 @@
-name: harmor_2oscfree
-# used for generating dataset for h2of.yaml
+name: h1ofcfrev_envno
 # generates dynamic parameters (cutoff, amplitudes) using envelope
-
-n_oscs: 2
-max_value: 0.6
-
+# note off position is random
+# save envelope params
 dag:
   enva:
     config:
       _target_: diffsynth.modules.envelope.ADSREnvelope
-      max_value: 0.6
-      channels: 2
+      max_value: 1.0
+      channels: 1
     connections:
       floor: AMP_FLOOR
       peak: PEAK_A
@@ -38,16 +35,34 @@ dag:
       _target_: diffsynth.modules.harmor.Harmor
       sample_rate: 16000
       sep_amp: true
-      n_oscs: 2
+      n_oscs: 1
     connections:
       amplitudes: enva
       osc_mix: M_OSC
       f0_hz: BFRQ
-      f0_mult: MULT
+      f0_mult: DUMMY
       cutoff: envc
       q: Q_FILT
-
+  chorus:
+    config:
+      _target_: diffsynth.modules.delay.ChorusFlanger
+      sample_rate: 16000
+    connections:
+      audio: harmor
+      delay_ms: CF_DELAY
+      rate: CF_RATE
+      depth: CF_DEPTH
+      mix: CF_MIX
+  reverb:
+    config:
+      _target_: diffsynth.modules.reverb.DecayReverb
+    connections:
+      audio: chorus
+      gain: REV_G
+      decay: REV_D
 fixed_params:
-  NOTE_OFF: 0.75
   AMP_FLOOR: 0
-static_params: [BFRQ, M_OSC, MULT, Q_FILT, NOISE_C, NOISE_A, AT_A, DE_A, SU_A, RE_A, AMP_FLOOR, PEAK_A, AT_C, DE_C, SU_C, RE_C, CUT_FLOOR, PEAK_C]
+  NOISE_A: 0
+  NOISE_C: 0
+  CF_DEPTH: 0.1
+static_params: [M_OSC, DUMMY, Q_FILT, NOISE_C, NOISE_A, AT_A, DE_A, SU_A, RE_A, AMP_FLOOR, PEAK_A, AT_C, DE_C, SU_C, RE_C, CUT_FLOOR, PEAK_C, NOTE_OFF, CF_DELAY, CF_RATE, CF_DEPTH, CF_MIX, REV_G, REV_D, BFRQ]

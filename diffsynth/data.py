@@ -53,7 +53,7 @@ class WaveParamDataset(Dataset):
         if self.f0:
             f0, periodicity = torch.load(self.f0_files[idx])
             f0_hz = process_f0(f0, periodicity)
-            data['f0_hz'] = f0_hz.unsqueeze(-1)
+            data['BFRQ'] = f0_hz.unsqueeze(-1)
         if self.params:
             params = torch.load(self.param_files[idx])
             data['params'] = params
