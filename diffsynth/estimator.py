@@ -50,7 +50,7 @@ class MelEstimator(nn.Module):
         self.hidden_size = hidden_size
         self.bidirectional = bidirectional
         self.gru = nn.GRU(self.l_out * channels, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True, bidirectional=bidirectional)
-        self.out = nn.Linear(hidden_size, output_dim)
+        self.out = nn.Linear(hidden_size*2 if bidirectional else 1, output_dim)
         self.output_dim = output_dim
 
     def forward(self, audio):
@@ -65,7 +65,7 @@ class MelEstimator(nn.Module):
         x = x.view(batch_size, n_frames, self.channels, self.l_out)
         x = x.view(batch_size, n_frames, -1)
         D = 2 if self.bidirectional else 1
-        output, _hidden = self.gru(x, torch.zeros(D * self.num_layers, batch_size, self.hidden_size))
+        output, _hidden = self.gru(x, torch.zeros(D * self.num_layers, batch_size, self.hidden_size, device=x.device))
         # output: [batch_size, n_frames, self.output_dim]
         output = self.out(output)
         return torch.sigmoid(output)
@@ -99,7 +99,7 @@ class F0MelEstimator(MelEstimator):
         f0 = (f0-FMIN)/(FMAX-FMIN)
         x = torch.cat([x, f0], dim=-1)
         D = 2 if self.bidirectional else 1
-        output, _hidden = self.gru(x, torch.zeros(D * self.num_layers, batch_size, self.hidden_size))
+        output, _hidden = self.gru(x, torch.zeros(D * self.num_layers, batch_size, self.hidden_size, device=x.device))
         # output: [batch_size, n_frames, self.output_dim]
         output = self.out(output)
         return torch.sigmoid(output)
