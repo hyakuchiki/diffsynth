@@ -69,7 +69,7 @@ if __name__ == "__main__":
     os.makedirs(f0_dir, exist_ok=True)
     raw_files = sorted(glob.glob(os.path.join(audio_dir, '*.wav')))
 
-    pool = torch.multiprocessing.Pool(processes=8)
+    pool = torch.multiprocessing.Pool(processes=2)
     func = functools.partial(write_f0, f0_dir=f0_dir, duration=args.duration, overwrite=args.overwrite)
     with tqdm.tqdm(total=len(raw_files)) as t:
         for _ in pool.imap_unordered(func, raw_files):

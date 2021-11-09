@@ -1,0 +1,28 @@
+name: harmor_1ofccf_f0
+dag:
+  harmor:
+    config:
+      _target_: diffsynth.modules.harmor.Harmor
+      sample_rate: ${data.sample_rate}
+      sep_amp: true
+      n_oscs: 1
+    connections:
+      amplitudes: AMP
+      osc_mix: M_OSC
+      f0_hz: BFRQ
+      f0_mult: MULT
+      cutoff: CUTOFF
+      q: Q_FILT
+  chorus:
+    config:
+      _target_: diffsynth.modules.delay.ChorusFlanger
+      sample_rate: 16000
+    connections:
+      audio: harmor
+      delay_ms: CF_DELAY
+      rate: CF_RATE
+      depth: CF_DEPTH
+      mix: CF_MIX
+fixed_params:
+  BFRQ: null
+static_params: [M_OSC, MULT, Q_FILT, CF_DELAY, CF_RATE, CF_DEPTH, CF_MIX]

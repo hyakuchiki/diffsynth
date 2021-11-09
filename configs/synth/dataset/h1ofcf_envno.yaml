@@ -1,0 +1,60 @@
+name: h1ofcf_envno
+# generates dynamic parameters (cutoff, amplitudes) using envelope
+# note off position is random
+# save envelope params
+dag:
+  enva:
+    config:
+      _target_: diffsynth.modules.envelope.ADSREnvelope
+      max_value: 1.0
+      channels: 1
+    connections:
+      floor: AMP_FLOOR
+      peak: PEAK_A
+      attack: AT_A
+      decay: DE_A
+      sus_level: SU_A
+      release: RE_A
+      note_off: NOTE_OFF
+      noise_mag: NOISE_A
+  envc:
+    config:
+      _target_: diffsynth.modules.envelope.ADSREnvelope
+      channels: 1
+    connections:
+      floor: CUT_FLOOR
+      peak: PEAK_C
+      attack: AT_C
+      decay: DE_C
+      sus_level: SU_C
+      release: RE_C
+      note_off: NOTE_OFF
+      noise_mag: NOISE_C
+  harmor:
+    config:
+      _target_: diffsynth.modules.harmor.Harmor
+      sample_rate: 16000
+      sep_amp: true
+      n_oscs: 1
+    connections:
+      amplitudes: enva
+      osc_mix: M_OSC
+      f0_hz: BFRQ
+      f0_mult: DUMMY
+      cutoff: envc
+      q: Q_FILT
+  chorus:
+    config:
+      _target_: diffsynth.modules.delay.ChorusFlanger
+      sample_rate: 16000
+    connections:
+      audio: harmor
+      delay_ms: CF_DELAY
+      rate: CF_RATE
+      depth: CF_DEPTH
+      mix: CF_MIX
+fixed_params:
+  AMP_FLOOR: 0
+  NOISE_A: 0
+  NOISE_C: 0
+static_params: [M_OSC, DUMMY, Q_FILT, NOISE_C, NOISE_A, AT_A, DE_A, SU_A, RE_A, AMP_FLOOR, PEAK_A, AT_C, DE_C, SU_C, RE_C, CUT_FLOOR, PEAK_C, NOTE_OFF, CF_DELAY, CF_RATE, CF_DEPTH, CF_MIX]

@@ -29,7 +29,7 @@ class MFCCEstimator(nn.Module):
         return torch.sigmoid(output)
 
 class MelEstimator(nn.Module):
-    def __init__(self, output_dim, n_mels=128, n_fft=1024, hop=256, sample_rate=16000, channels=64, kernel_size=7, strides=[2,2,2], num_layers=1, hidden_size=512, dropout_p=0.0, norm='batch'):
+    def __init__(self, output_dim, n_mels=128, n_fft=1024, hop=256, sample_rate=16000, channels=64, kernel_size=7, strides=[2,2,2], num_layers=1, hidden_size=512, dropout_p=0.0, bidirectional=False, norm='batch'):
         super().__init__()
         self.n_mels = n_mels
         self.channels = channels
@@ -46,7 +46,10 @@ class MelEstimator(nn.Module):
                          for i in range(1, len(strides))])
         self.l_out = self.get_downsampled_length()[-1] # downsampled in frequency dimension
         print('output dims after convolution', self.l_out)
-        self.gru = nn.GRU(self.l_out * channels, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True)
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        self.bidirectional = bidirectional
+        self.gru = nn.GRU(self.l_out * channels, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True, bidirectional=bidirectional)
         self.out = nn.Linear(hidden_size, output_dim)
         self.output_dim = output_dim
 
@@ -61,7 +64,8 @@ class MelEstimator(nn.Module):
             x = conv(x)
         x = x.view(batch_size, n_frames, self.channels, self.l_out)
         x = x.view(batch_size, n_frames, -1)
-        output, _hidden = self.gru(x)
+        D = 2 if self.bidirectional else 1
+        output, _hidden = self.gru(x, torch.zeros(D * self.num_layers, batch_size, self.hidden_size))
         # output: [batch_size, n_frames, self.output_dim]
         output = self.out(output)
         return torch.sigmoid(output)
@@ -76,9 +80,9 @@ class MelEstimator(nn.Module):
         return lengths
 
 class F0MelEstimator(MelEstimator):
-    def __init__(self, output_dim, n_mels=128, n_fft=1024, hop=256, sample_rate=16000, channels=64, kernel_size=7, strides=[2,2,2], num_layers=1, hidden_size=512, dropout_p=0.0, norm='batch'):
-        super().__init__(output_dim, n_mels, n_fft, hop, sample_rate, channels, kernel_size, strides, num_layers, hidden_size, dropout_p, norm)
-        self.gru = nn.GRU(self.l_out * channels + 1, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True)
+    def __init__(self, output_dim, n_mels=128, n_fft=1024, hop=256, sample_rate=16000, channels=64, kernel_size=7, strides=[2,2,2], num_layers=1, hidden_size=512, dropout_p=0.0, bidirectional=False, norm='batch'):
+        super().__init__(output_dim, n_mels, n_fft, hop, sample_rate, channels, kernel_size, strides, num_layers, hidden_size, dropout_p, bidirectional, norm)
+        self.gru = nn.GRU(self.l_out * channels + 1, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True, bidirectional=bidirectional)
 
     def forward(self, audio, f0):
         x = self.logmel(audio)
@@ -94,7 +98,8 @@ class F0MelEstimator(MelEstimator):
         f0 = resample_frames(f0, n_frames)
         f0 = (f0-FMIN)/(FMAX-FMIN)
         x = torch.cat([x, f0], dim=-1)
-        output, _hidden = self.gru(x)
+        D = 2 if self.bidirectional else 1
+        output, _hidden = self.gru(x, torch.zeros(D * self.num_layers, batch_size, self.hidden_size))
         # output: [batch_size, n_frames, self.output_dim]
         output = self.out(output)
         return torch.sigmoid(output)

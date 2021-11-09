@@ -21,6 +21,7 @@ if __name__ == "__main__":
     parser.add_argument('--audio_len',  type=float, default=4.0)
     parser.add_argument('--sr',         type=int,   default=16000)
     parser.add_argument('--batch_size', type=int,   default=64)
+    parser.add_argument('--save_param', action='store_true')
     args = parser.parse_args()
 
     conf = OmegaConf.load(args.synth_conf)
@@ -32,14 +33,18 @@ if __name__ == "__main__":
     count = 0
     break_flag = False
     skip_count = 0
-    ext_params = list(synth.ext_param_sizes.keys())
+    if args.save_param:
+        save_params = conf.save_params # harmor_q, harmor_cutoff, etc.
+    else: # save all external params
+        rev_dag_summary = {v: k for k,v in synth.dag_summary.items()} # HARM_Q: harmor_q
+        save_params = [rev_dag_summary[k] for k in synth.ext_param_sizes.keys()]
     with torch.no_grad():
         with tqdm.tqdm(total=args.data_size) as pbar:
             while True:
                 if break_flag:
                     break
                 audio, output = synth.uniform(args.batch_size, n_samples, 'cuda')
-                params = {k: output[k].cpu() for k in ext_params}
+                params = {k: output[synth.dag_summary[k]].cpu() for k in save_params}
                 for j in range(args.batch_size):
                     if count >= args.data_size:
                         break_flag=True
