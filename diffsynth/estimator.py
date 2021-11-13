@@ -50,7 +50,7 @@ class MelEstimator(nn.Module):
         self.hidden_size = hidden_size
         self.bidirectional = bidirectional
         self.gru = nn.GRU(self.l_out * channels, hidden_size, num_layers=num_layers, dropout=dropout_p, batch_first=True, bidirectional=bidirectional)
-        self.out = nn.Linear(hidden_size*2 if bidirectional else 1, output_dim)
+        self.out = nn.Linear(hidden_size*2 if bidirectional else hidden_size, output_dim)
         self.output_dim = output_dim
 
     def forward(self, audio):
